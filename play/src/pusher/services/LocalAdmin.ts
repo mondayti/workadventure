@@ -1,6 +1,12 @@
 import path from "path";
-import type { MapDetailsData, RoomRedirect, AdminApiData, ErrorApiData } from "@workadventure/messages";
-import { OpidWokaNamePolicy } from "@workadventure/messages";
+import type {
+    MapDetailsData,
+    RoomRedirect,
+    AdminApiData,
+    ErrorApiData,
+    CompanionDetail,
+} from "@workadventure/messages";
+import { Capabilities, OpidWokaNamePolicy } from "@workadventure/messages";
 import axios from "axios";
 import { MapsCacheFileFormat } from "@workadventure/map-editor";
 import {
@@ -18,6 +24,7 @@ import {
     KLAXOON_ENABLED,
     KLAXOON_CLIENT_ID,
     YOUTUBE_ENABLED,
+    GOOGLE_DRIVE_ENABLED,
     GOOGLE_DOCS_ENABLED,
     GOOGLE_SHEETS_ENABLED,
     GOOGLE_SLIDES_ENABLED,
@@ -59,16 +66,34 @@ class LocalAdmin implements AdminInterface {
         if (ENABLE_CHAT) {
             mucRooms.push({ name: "Welcome", url: `${playUri}/forum/welcome`, type: "forum", subscribe: false });
         }
+
+        let isCharacterTexturesValid = true;
+
+        const characterTextures = await localWokaService.fetchWokaDetails(characterTextureIds);
+        if (characterTextures === undefined) {
+            isCharacterTexturesValid = false;
+        }
+
+        let isCompanionTextureValid = true;
+        let companionTexture: CompanionDetail | undefined = undefined;
+        if (companionTextureId) {
+            companionTexture = await localCompanionService.fetchCompanionDetails(companionTextureId);
+            if (companionTexture === undefined) {
+                isCompanionTextureValid = false;
+            }
+        }
+
         return {
+            status: "ok",
             email: userIdentifier,
             userUuid: userIdentifier,
             tags: [],
             messages: [],
             visitCardUrl: null,
-            characterTextures: (await localWokaService.fetchWokaDetails(characterTextureIds)) ?? [],
-            companionTexture: companionTextureId
-                ? await localCompanionService.fetchCompanionDetails(companionTextureId)
-                : undefined,
+            isCharacterTexturesValid,
+            characterTextures: characterTextures ?? [],
+            isCompanionTextureValid,
+            companionTexture,
             userRoomToken: undefined,
             mucRooms,
             activatedInviteUser: true,
@@ -106,6 +131,7 @@ class LocalAdmin implements AdminInterface {
             match = /\/_\/[^/]+\/(.+)/.exec(roomUrl.pathname);
             if (!match) {
                 return Promise.resolve({
+                    status: "error",
                     type: "error",
                     code: "UNSUPPORTED_URL_FORMAT",
                     title: "Unsupported URL format",
@@ -126,7 +152,7 @@ class LocalAdmin implements AdminInterface {
             authenticationMandatory: DISABLE_ANONYMOUS,
             contactPage: null,
             mucRooms: null,
-            group: null,
+            group: wamUrl ? "default" : null,
             iframeAuthentication: null,
             opidLogoutRedirectUrl: null,
             opidUsernamePolicy: opidWokaNamePolicyCheck.success ? opidWokaNamePolicyCheck.data : null,
@@ -143,6 +169,7 @@ class LocalAdmin implements AdminInterface {
             klaxoonToolActivated: KLAXOON_ENABLED,
             klaxoonToolClientId: KLAXOON_CLIENT_ID,
             youtubeToolActivated: YOUTUBE_ENABLED,
+            googleDriveToolActivated: GOOGLE_DRIVE_ENABLED,
             googleDocsToolActivated: GOOGLE_DOCS_ENABLED,
             googleSheetsToolActivated: GOOGLE_SHEETS_ENABLED,
             googleSlidesToolActivated: GOOGLE_SLIDES_ENABLED,
@@ -229,6 +256,25 @@ class LocalAdmin implements AdminInterface {
 
     getTagsList(roomUrl: string): Promise<string[]> {
         return Promise.reject(new Error("No admin backoffice set!"));
+    }
+
+    saveName(userIdentifier: string, name: string, roomUrl: string): Promise<void> {
+        return Promise.reject(new Error("No admin backoffice set!"));
+    }
+
+    saveTextures(userIdentifier: string, textures: string[], roomUrl: string): Promise<void> {
+        return Promise.reject(new Error("No admin backoffice set!"));
+    }
+
+    saveCompanionTexture(userIdentifier: string, texture: string, roomUrl: string): Promise<void> {
+        return Promise.reject(new Error("No admin backoffice set!"));
+    }
+
+    public getCapabilities(): Promise<Capabilities> {
+        return Promise.resolve({
+            "api/woka/list": "v1",
+            "api/companion/list": "v1",
+        });
     }
 }
 

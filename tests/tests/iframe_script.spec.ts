@@ -2,13 +2,14 @@ import { expect, test } from '@playwright/test';
 import { login } from './utils/roles';
 import Menu from "./utils/menu";
 import {evaluateScript} from "./utils/scripting";
+import {RENDERER_MODE} from "./utils/environment";
 
 test.describe('Iframe API', () => {
   test('can be called from an iframe loading a script', async ({
     page,
   }) => {
     await page.goto(
-      'http://play.workadventure.localhost/_/global/maps.workadventure.localhost/tests/Metadata/cowebsiteAllowApi.json'
+      `http://play.workadventure.localhost/_/global/maps.workadventure.localhost/tests/Metadata/cowebsiteAllowApi.json?phaserMode=${RENDERER_MODE}`
     );
 
     await login(page);
@@ -21,7 +22,7 @@ test.describe('Iframe API', () => {
     page
   }) => {
     await page.goto(
-        'http://play.workadventure.localhost/_/global/maps.workadventure.localhost/tests/E2E/empty.json'
+        `http://play.workadventure.localhost/_/global/maps.workadventure.localhost/tests/E2E/empty.json?phaserMode=${RENDERER_MODE}`
     );
 
     await login(page);
@@ -76,5 +77,23 @@ test.describe('Iframe API', () => {
     });
 
     await expect(page.locator('.menu-container')).toContainText("Share the link of the room");
+  });
+
+  test('base room properties', async ({
+                                                          page
+                                                        }) => {
+    await page.goto(
+        `http://play.workadventure.localhost/_/global/maps.workadventure.localhost/tests/E2E/empty.json?phaserMode=${RENDERER_MODE}#foo=bar`
+    );
+
+    await login(page);
+
+    const parameter = await evaluateScript(page, async () => {
+      await WA.onInit();
+
+      return WA.room.hashParameters.foo;
+    });
+
+    expect(parameter).toEqual('bar');
   });
 });

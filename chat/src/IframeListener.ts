@@ -1,6 +1,6 @@
 import { get } from "svelte/store";
 import Debug from "debug";
-import { KLAXOON_ACTIVITY_PICKER_EVENT } from "@workadventure/shared-utils";
+import { KLAXOON_ACTIVITY_PICKER_EVENT, ChatMessageTypes } from "@workadventure/shared-utils";
 import {
     isLookingLikeIframeEventWrapper,
     isIframeEventWrapper,
@@ -10,7 +10,6 @@ import { userStore } from "./Stores/LocalUserStore";
 import {
     availabilityStatusStore,
     chatMessagesStore,
-    ChatMessageTypes,
     chatNotificationsStore,
     chatPeerConnectionInProgress,
     chatSoundsStore,
@@ -33,6 +32,7 @@ import { chatConnectionManager } from "./Connection/ChatConnectionManager";
 import { NotificationType } from "./Media/MediaManager";
 import { activeThreadStore } from "./Stores/ActiveThreadStore";
 import { emojiRegex } from "./Utils/HtmlUtils";
+import { User } from "./Xmpp/AbstractRoom";
 
 const debug = Debug("chat");
 
@@ -105,7 +105,7 @@ class IframeListener {
                                 break;
                             }
                             case "updateWritingStatusChatList": {
-                                writingStatusMessageStore.set(iframeEvent.data);
+                                writingStatusMessageStore.set(iframeEvent.data.users);
                                 break;
                             }
                             case "addChatMessage": {
@@ -114,7 +114,11 @@ class IframeListener {
                                 }
                                 const mucRoomDefault = mucRoomsStore.getDefaultRoom();
                                 let userData = undefined;
-                                if (mucRoomDefault && iframeEvent.data.author.jid !== "fake") {
+                                if (
+                                    mucRoomDefault &&
+                                    iframeEvent.data.author &&
+                                    iframeEvent.data.author.jid !== "fake"
+                                ) {
                                     try {
                                         userData = mucRoomDefault.getUserByJid(iframeEvent.data.author.jid);
                                     } catch (e) {
@@ -124,16 +128,41 @@ class IframeListener {
                                 } else {
                                     userData = iframeEvent.data.author;
                                 }
-                                for (const chatMessageText of iframeEvent.data.text) {
-                                    chatMessagesStore.addExternalMessage(userData, chatMessageText, userData.name);
+
+                                if (iframeEvent.data.type === ChatMessageTypes.text) {
+                                    if (!userData) {
+                                        throw new Error("Received a message from the scripting API without an author");
+                                    }
+                                    for (const chatMessageText of iframeEvent.data.text) {
+                                        chatMessagesStore.addExternalMessage(userData, chatMessageText, userData.name);
+                                    }
+                                } else if (iframeEvent.data.type === ChatMessageTypes.me) {
+                                    for (const chatMessageText of iframeEvent.data.text) {
+                                        chatMessagesStore.addPersonalMessage(chatMessageText);
+                                    }
                                 }
+
                                 break;
                             }
                             case "comingUser": {
                                 const mucRoomDefault = mucRoomsStore.getDefaultRoom();
-                                let userData = undefined;
+                                let userData: User;
                                 if (mucRoomDefault && iframeEvent.data.author.jid !== "fake") {
-                                    userData = mucRoomDefault.getUserByJid(iframeEvent.data.author.jid);
+                                    let userDataDefaultMucRoom = mucRoomDefault.getUserByJid(
+                                        iframeEvent.data.author.jid
+                                    );
+                                    if (userDataDefaultMucRoom === undefined) {
+                                        // Something went wrong while fetching user data from the default MucRoom.
+                                        // Let's try a fallback.
+                                        userDataDefaultMucRoom = {
+                                            name: "Unknown",
+                                            active: true,
+                                            jid: iframeEvent.data.author.jid,
+                                            isMe: false,
+                                            isMember: false,
+                                        };
+                                    }
+                                    userData = userDataDefaultMucRoom;
                                 } else {
                                     userData = iframeEvent.data.author;
                                 }
@@ -284,22 +313,19 @@ class IframeListener {
 export const iframeListener = new IframeListener();
 
 /* @deprecated with new service chat messagerie */
-//publis new message when user send message in chat timeline
-newChatMessageSubject.subscribe((messgae) => {
-    window.parent.postMessage(
-        {
-            type: "addPersonnalMessage",
-            data: messgae,
-        },
-        "*"
-    );
+//publish new message when user send message in chat timeline
+//eslint-disable-next-line rxjs/no-ignored-subscription, svelte/no-ignored-unsubscribe
+newChatMessageSubject.subscribe((message) => {
+    iframeListener.sendToParent({
+        type: "addPersonnalMessage",
+        data: message,
+    });
 });
+
+//eslint-disable-next-line rxjs/no-ignored-subscription, svelte/no-ignored-unsubscribe
 newChatMessageWritingStatusSubject.subscribe((status) => {
-    window.parent.postMessage(
-        {
-            type: "newChatMessageWritingStatus",
-            data: status,
-        },
-        "*"
-    );
+    iframeListener.sendToParent({
+        type: "newChatMessageWritingStatus",
+        data: status,
+    });
 });

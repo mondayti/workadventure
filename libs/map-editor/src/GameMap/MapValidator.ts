@@ -300,6 +300,7 @@ export class MapValidator {
                             break;
                         case "playAudio":
                             if (property.type === "string" && property.value) {
+                                //eslint-disable-next-line no-await-in-loop
                                 if (!(await this.fileFetcher.fileExists(property.value))) {
                                     errors.push({
                                         type: "warning",
@@ -401,7 +402,19 @@ export class MapValidator {
                 tilesetTsx.push(tileset.source);
                 continue;
             }
+
+            if (!("image" in tileset)) {
+                errors.push({
+                    type: "error",
+                    message: `The tileset "${tileset.name}" is a collection of images. Collection of images are not supported.`,
+                    details: "",
+                });
+                continue;
+            }
+
             //test of tileset image existence : ERRORS
+            //TODO: optimize this by removing the await in the loop
+            //eslint-disable-next-line no-await-in-loop
             if (!(await this.fileFetcher.fileExists(tileset.image))) {
                 errors.push({
                     type: "error",

@@ -4,6 +4,7 @@
     import { fly } from "svelte/transition";
     import { onDestroy, onMount } from "svelte";
     import { writable } from "svelte/store";
+    import { Subscription } from "rxjs";
     import { requestedScreenSharingState } from "../../Stores/ScreenSharingStore";
     import {
         cameraListStore,
@@ -34,7 +35,6 @@
     import mapBuilder from "../images/maps-builder.png";
     import screenshareOn from "../images/screenshare-on.png";
     import screenshareOff from "../images/screenshare-off.png";
-    import screenshareOffAlt from "../images/screenshare-off-alt.png";
     import emojiPickOn from "../images/emoji-on.png";
     import closeImg from "../images/close.png";
     import penImg from "../images/pen.png";
@@ -87,7 +87,7 @@
     import { Emoji } from "../../Stores/Utils/emojiSchema";
     import {
         megaphoneCanBeUsedStore,
-        megaphoneEnabledStore,
+        liveStreamingEnabledStore,
         requestedMegaphoneStore,
     } from "../../Stores/MegaphoneStore";
     import { layoutManagerActionStore } from "../../Stores/LayoutManagerStore";
@@ -178,16 +178,18 @@
             streamingMegaphoneStore.set(false);
             return;
         }
-        if ($requestedMegaphoneStore || $megaphoneEnabledStore) {
+        if ($requestedMegaphoneStore || $liveStreamingEnabledStore) {
             analyticsClient.stopMegaphone();
             requestedMegaphoneStore.set(false);
             return;
         }
 
+        analyticsClient.startMegaphone();
         streamingMegaphoneStore.set(true);
     }
 
     function toggleMapEditorMode() {
+        if (isMobile) return;
         analyticsClient.toggleMapEditor(!$mapEditorModeStore);
         mapEditorModeStore.switchMode(!$mapEditorModeStore);
     }
@@ -357,14 +359,19 @@
     }
 
     let subscribers = new Array<Unsubscriber>();
+    let chatTotalMessagesSubscription: Subscription | undefined;
     let totalMessagesToSee = writable<number>(0);
     onMount(() => {
-        iframeListener.chatTotalMessagesToSeeStream.subscribe((total) => totalMessagesToSee.set(total));
+        chatTotalMessagesSubscription = iframeListener.chatTotalMessagesToSeeStream.subscribe((total) =>
+            totalMessagesToSee.set(total)
+        );
+        resizeObserver.observe(mainHtmlDiv);
     });
 
     onDestroy(() => {
         subscribers.map((subscriber) => subscriber());
         unsubscribeLocalStreamStore();
+        chatTotalMessagesSubscription?.unsubscribe();
     });
 
     let stream: MediaStream | null;
@@ -386,12 +393,19 @@
         }
     });
 
-    const isMobile = isMediaBreakpointUp("md");
-
     function buttonActionBarTrigger(id: string) {
         const button = $additionnalButtonsMenu.get(id) as AddButtonActionBarEvent;
         return iframeListener.sendButtonActionBarTriggered(button);
     }
+
+    let mainHtmlDiv: HTMLDivElement;
+    let isMobile = isMediaBreakpointUp("md");
+    const resizeObserver = new ResizeObserver(() => {
+        isMobile = isMediaBreakpointUp("md");
+        if (isMobile) {
+            mapEditorModeStore.set(false);
+        }
+    });
 </script>
 
 <svelte:window on:keydown={onKeyDown} />
@@ -399,6 +413,7 @@
 <div
     class="tw-flex tw-justify-center tw-m-auto tw-absolute tw-left-0 tw-right-0 tw-bottom-0"
     class:animated={$bottomActionBarVisibilityStore}
+    bind:this={mainHtmlDiv}
 >
     <div class="bottom-action-bar tw-absolute">
         {#if $bottomActionBarVisibilityStore}
@@ -556,7 +571,7 @@
                                     style="bottom: 15px;right: 0;"
                                     on:mouseleave={() => (cameraActive = false)}
                                 >
-                                    {#each $cameraListStore as camera}
+                                    {#each $cameraListStore as camera (camera.deviceId)}
                                         <!-- svelte-ignore a11y-click-events-have-key-events -->
                                         <span
                                             class="wa-dropdown-item tw-flex"
@@ -628,7 +643,7 @@
                                         <span class="tw-underline tw-font-bold tw-text-xs tw-p-1"
                                             >{$LL.actionbar.subtitle.microphone()} 🎙️</span
                                         >
-                                        {#each $microphoneListStore as microphone}
+                                        {#each $microphoneListStore as microphone (microphone.deviceId)}
                                             <span
                                                 class="wa-dropdown-item"
                                                 on:click={() => {
@@ -650,7 +665,7 @@
                                         <span class="tw-underline tw-font-bold tw-text-xs tw-p-1"
                                             >{$LL.actionbar.subtitle.speaker()} 🔈</span
                                         >
-                                        {#each $speakerListStore as speaker}
+                                        {#each $speakerListStore as speaker (speaker.deviceId)}
                                             <span
                                                 class="wa-dropdown-item"
                                                 on:click={() => {
@@ -672,7 +687,7 @@
                     {/if}
                 {/if}
 
-                {#if $isSpeakerStore || $streamingMegaphoneStore || $megaphoneEnabledStore}
+                {#if $isSpeakerStore || $streamingMegaphoneStore || $liveStreamingEnabledStore}
                     <div
                         class="tw-transition-all bottom-action-button"
                         on:click={() => analyticsClient.screenSharing()}
@@ -692,7 +707,7 @@
                             {:else}
                                 <img
                                     draggable="false"
-                                    src={screenshareOffAlt}
+                                    src={screenshareOff}
                                     style="padding: 2px;"
                                     alt="Start screen sharing"
                                 />
@@ -748,19 +763,19 @@
                             <MegaphoneConfirm />
                         {:else}
                             <Tooltip
-                                text={$megaphoneEnabledStore
+                                text={$liveStreamingEnabledStore
                                     ? $LL.actionbar.disableMegaphone()
                                     : $LL.actionbar.enableMegaphone()}
                             />
                         {/if}
 
                         <button
-                            class:border-top-warning={$megaphoneEnabledStore || $streamingMegaphoneStore}
+                            class:border-top-warning={$liveStreamingEnabledStore || $streamingMegaphoneStore}
                             id="megaphone"
                         >
                             <img draggable="false" src={megaphoneImg} style="padding: 2px" alt="Toggle megaphone" />
                         </button>
-                        {#if $megaphoneEnabledStore}
+                        {#if $liveStreamingEnabledStore}
                             <div class="tw-absolute tw-top-[1.05rem] tw-right-1">
                                 <span
                                     class="tw-w-3 tw-h-3 tw-bg-warning tw-block tw-rounded-full tw-absolute tw-top-0 tw-right-0 tw-animate-ping tw-cursor-pointer"
@@ -795,13 +810,24 @@
                         on:click={toggleMapEditorMode}
                         class="bottom-action-button"
                     >
-                        <Tooltip text={$LL.actionbar.mapEditor()} />
+                        {#if isMobile}
+                            <Tooltip text={$LL.actionbar.mapEditorMobileLocked()} />
+                        {:else}
+                            <Tooltip text={$LL.actionbar.mapEditor()} />
+                        {/if}
                         <button
                             id="mapEditorIcon"
-                            class:border-top-light={$mapEditorModeStore}
+                            class:border-top-light={$mapEditorModeStore && !isMobile}
                             name="toggle-map-editor"
+                            disabled={isMobile}
                         >
-                            <img draggable="false" src={mapBuilder} style="padding: 2px" alt="toggle-map-editor" />
+                            <img
+                                draggable="false"
+                                src={mapBuilder}
+                                class:disable-opacity={isMobile}
+                                style="padding: 2px"
+                                alt="toggle-map-editor"
+                            />
                         </button>
                     </div>
                 {/if}
@@ -824,7 +850,7 @@
 
             {#if $addActionButtonActionBarEvent.length > 0}
                 <div class="bottom-action-section tw-flex tw-flex-initial">
-                    {#each $addActionButtonActionBarEvent as button}
+                    {#each $addActionButtonActionBarEvent as button (button.id)}
                         <!-- svelte-ignore a11y-click-events-have-key-events -->
                         <div
                             in:fly={{}}
@@ -875,28 +901,7 @@
                     </button>
                 </div>
             {/if}
-
-            <!-- TODO button must displayed by scripting API -->
-            <!--
-			{#if ENABLE_OPENID && !$userIsConnected && }
-				<div
-					class="bottom-action-section tw-flex tw-flex-initial"
-					in:fly={{}}
-					on:dragstart|preventDefault={noDrag}
-					on:click={() => analyticsClient.openRegister()}
-					on:click={register}
-				>
-					<button
-						class="btn light tw-m-0 tw-font-bold tw-text-xs sm:tw-text-base"
-						id="register-btn"
-						class:border-top-light={$menuVisiblilityStore}
-					>
-						{$LL.menu.icon.open.register()}
-					</button>
-				</div>
-			{/if}
-			-->
-            {#each $addClassicButtonActionBarEvent as button}
+            {#each $addClassicButtonActionBarEvent as button (button.id)}
                 <!-- svelte-ignore a11y-click-events-have-key-events -->
                 <div
                     class="bottom-action-section tw-flex tw-flex-initial"
@@ -923,7 +928,7 @@
     >
         <div class="bottom-action-bar">
             <div class="bottom-action-section tw-flex animate">
-                {#each [...$emoteDataStore.keys()] as key}
+                {#each [...$emoteDataStore.keys()] as key (key)}
                     <div class="tw-transition-all bottom-action-button">
                         <button
                             on:click={() => {

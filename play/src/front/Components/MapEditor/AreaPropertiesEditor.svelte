@@ -5,6 +5,7 @@
         AreaDataPropertiesKeys,
         AreaDataProperties,
         OpenWebsiteTypePropertiesKeys,
+        PlayAudioPropertyData,
     } from "@workadventure/map-editor";
     import { KlaxoonEvent, KlaxoonService } from "@workadventure/shared-utils";
     import { LL } from "../../../i18n/i18n-svelte";
@@ -12,6 +13,7 @@
     import audioSvg from "../images/audio-white.svg";
     import youtubeSvg from "../images/applications/icon_youtube.svg";
     import klaxoonSvg from "../images/applications/icon_klaxoon.svg";
+    import googleDriveSvg from "../images/applications/icon_google_drive.svg";
     import googleDocsSvg from "../images/applications/icon_google_docs.svg";
     import googleSheetsSvg from "../images/applications/icon_google_sheets.svg";
     import googleSlidesSvg from "../images/applications/icon_google_slides.svg";
@@ -43,7 +45,7 @@
 
     let selectedAreaPreviewUnsubscriber = mapEditorSelectedAreaPreviewStore.subscribe((currentAreaPreview) => {
         if (currentAreaPreview) {
-            properties = currentAreaPreview.getProperties() ?? [];
+            properties = structuredClone(currentAreaPreview.getProperties());
             areaName = currentAreaPreview.getAreaData().name;
             refreshFlags();
         }
@@ -96,6 +98,9 @@
                     case "klaxoon":
                         placeholder = "https://app.klaxoon.com/";
                         break;
+                    case "googleDrive":
+                        placeholder = "https://drive.google.com/file/d/1DjNjZVbVeQO9EvgONLzCtl6wG-kxSr9Z/preview";
+                        break;
                     case "googleDocs":
                         placeholder =
                             "https://docs.google.com/document/d/1iFHmKL4HJ6WzvQI-6FlyeuCy1gzX8bWQ83dNlcTzigk/edit";
@@ -130,7 +135,9 @@
                 return {
                     id,
                     type,
+                    hideButtonLabel: true,
                     audioLink: "",
+                    volume: 1,
                 };
             case "speakerMegaphone":
                 return {
@@ -240,6 +247,11 @@
                 onUpdateProperty(app);
             }
         );
+    }
+
+    // Fixme: this is a hack to force the map editor to update the property
+    function onUpdateAudioProperty(data: CustomEvent<PlayAudioPropertyData>) {
+        onUpdateProperty(data.detail);
     }
 </script>
 
@@ -373,6 +385,18 @@
             }}
         />
         <AddPropertyButton
+            headerText={$LL.mapEditor.properties.googleDriveProperties.label()}
+            descriptionText={connectionManager.currentRoom?.googleDocsToolActivated
+                ? $LL.mapEditor.properties.googleDriveProperties.description()
+                : $LL.mapEditor.properties.googleDriveProperties.disabled()}
+            img={googleDriveSvg}
+            style="z-index: 3;"
+            disabled={!connectionManager.currentRoom?.googleDocsToolActivated}
+            on:click={() => {
+                onAddProperty("openWebsite", "googleDrive");
+            }}
+        />
+        <AddPropertyButton
             headerText={$LL.mapEditor.properties.googleDocsProperties.label()}
             descriptionText={connectionManager.currentRoom?.googleDocsToolActivated
                 ? $LL.mapEditor.properties.googleDocsProperties.description()
@@ -426,7 +450,7 @@
         <input id="objectName" type="text" placeholder="Value" bind:value={areaName} on:change={onUpdateName} />
     </div>
     <div class="properties-container">
-        {#each properties as property}
+        {#each properties as property (property.id)}
             <div class="property-box">
                 {#if property.type === "focusable"}
                     <FocusablePropertyEditor
@@ -457,7 +481,7 @@
                         on:close={() => {
                             onDeleteProperty(property.id);
                         }}
-                        on:change={() => onUpdateProperty(property)}
+                        on:audioLink={onUpdateAudioProperty}
                     />
                 {:else if property.type === "openWebsite"}
                     <OpenWebsitePropertyEditor

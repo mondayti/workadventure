@@ -583,36 +583,47 @@ jobs:
           - browser: chromium
             shard: 1
             nbShards: 3
+            renderer: auto
           - browser: chromium
             shard: 2
             nbShards: 3
+            renderer: auto
           - browser: chromium
             shard: 3
             nbShards: 3
+            renderer: auto
           - browser: firefox
             shard: 1
             nbShards: 3
+            renderer: auto
           - browser: firefox
             shard: 2
             nbShards: 3
+            renderer: auto
           - browser: firefox
             shard: 3
             nbShards: 3
+            renderer: auto
           - browser: webkit
             shard: 1
             nbShards: 5
+            renderer: headless
           - browser: webkit
             shard: 2
             nbShards: 5
+            renderer: headless
           - browser: webkit
             shard: 3
             nbShards: 5
+            renderer: headless
           - browser: webkit
             shard: 4
             nbShards: 5
+            renderer: headless
           - browser: webkit
             shard: 5
             nbShards: 5
+            renderer: headless
     needs:
       - build-play
       - build-chat
@@ -719,6 +730,7 @@ jobs:
         working-directory: tests
         env:
           DOCKER_TAG: ${{ github.event_name == 'pull_request' && env.GITHUB_HEAD_REF_SLUG || env.GITHUB_REF_SLUG }}
+          RENDERER_MODE: ${{ matrix.renderer }}
       - name: Display docker-compose logs on failure
         run: docker-compose -f docker-compose.yaml -f docker-compose-oidc.yaml -f docker-compose.e2e.yml logs
         if: failure()
@@ -868,7 +880,7 @@ jobs:
       - uses: rlespinasse/github-slug-action@4.2.3
 
       - name: Set ADMIN_URL if "deploy-connect-to-admin" label is set
-        run: echo "ADMIN_API_URL=https://${{ github.event_name == 'pull_request' && env.GITHUB_HEAD_REF_SLUG || env.GITHUB_REF_SLUG }}.test.workadventu.re" >> $GITHUB_ENV
+        run: echo "ADMIN_API_URL=https://admin-${{ github.event_name == 'pull_request' && env.GITHUB_HEAD_REF_SLUG || env.GITHUB_REF_SLUG }}.test.workadventu.re" >> $GITHUB_ENV
         if: ${{ (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'deploy-connect-to-admin')) || env.GITHUB_REF_SLUG == 'develop'  }}
 
       - name: Write certificate
@@ -920,6 +932,8 @@ jobs:
           REPORT_ISSUES_URL: ${{ secrets.REPORT_ISSUES_URL }}
           LOGROCKET_ID: ${{ secrets.LOGROCKET_ID }}
           KLAXOON_CLIENT_ID: ${{ secrets.KLAXOON_CLIENT_ID }}
+          GOOGLE_DRIVE_PICKER_CLIENT_ID: ${{ secrets.GOOGLE_DRIVE_PICKER_CLIENT_ID }}
+          GOOGLE_DRIVE_PICKER_APP_ID: ${{ secrets.GOOGLE_DRIVE_PICKER_APP_ID }}
         with:
           namespace: workadventure-${{ github.event_name == 'pull_request' && env.GITHUB_HEAD_REF_SLUG || env.GITHUB_REF_SLUG }}
 

@@ -21,6 +21,7 @@ import { waScaleManager } from "./front/Phaser/Services/WaScaleManager";
 import { Game } from "./front/Phaser/Game/Game";
 import App from "./front/Components/App.svelte";
 import { HtmlUtils } from "./front/WebRtc/HtmlUtils";
+import { urlManager } from "./front/Url/UrlManager";
 import WebGLRenderer = Phaser.Renderer.WebGL.WebGLRenderer;
 
 if (SENTRY_DSN_FRONT != undefined) {
@@ -71,13 +72,22 @@ const fps: Phaser.Types.Core.FPSConfig = {
     smoothStep: false,
 };
 
-// the ?phaserMode=canvas parameter can be used to force Canvas usage
-const params = new URLSearchParams(document.location.search.substring(1));
-const phaserMode = params.get("phaserMode");
+// the ?phaserMode=canvas or #phaserMode=canvas parameter can be used to force Canvas usage
+function getRendererMode(): string | undefined {
+    const params = new URLSearchParams(document.location.search.substring(1));
+    let phaserMode: string | null | undefined = params.get("phaserMode");
+
+    if (phaserMode === null) {
+        phaserMode = urlManager.getHashParameter("phaserMode");
+    }
+
+    return phaserMode;
+}
+
 let mode: number;
-switch (phaserMode) {
+switch (getRendererMode()) {
     case "auto":
-    case null:
+    case undefined:
         mode = Phaser.AUTO;
         break;
     case "canvas":
@@ -86,8 +96,11 @@ switch (phaserMode) {
     case "webgl":
         mode = Phaser.WEBGL;
         break;
+    case "headless":
+        mode = Phaser.HEADLESS;
+        break;
     default:
-        throw new Error('phaserMode parameter must be one of "auto", "canvas" or "webgl"');
+        throw new Error('phaserMode parameter must be one of "auto", "canvas", "webgl" or "headless"');
 }
 
 const hdpiManager = new HdpiManager(640 * 480, 196 * 196);
@@ -121,9 +134,9 @@ const config: Phaser.Types.Core.GameConfig = {
     },
     disableContextMenu: true,
     render: {
-        pixelArt: true,
+        pixelArt: mode !== Phaser.HEADLESS, // There is a bug in Phaser 3.60.0 that makes headless mode crash when pixelArt is enabled
         roundPixels: true,
-        antialias: false,
+        antialias: mode === Phaser.HEADLESS, // There is a bug in Phaser 3.60.0 that makes headless mode crash when antialias is disabled
         antialiasGL: false,
     },
     plugins: {
@@ -176,6 +189,8 @@ window.addEventListener("resize", function () {
     waScaleManager.refreshFocusOnTarget();
 });
 
+// coWebsiteManager.onResize is a singleton. No need to unsubscribe.
+//eslint-disable-next-line rxjs/no-ignored-subscription, svelte/no-ignored-unsubscribe
 coWebsiteManager.onResize.subscribe(() => {
     waScaleManager.applyNewSize();
     waScaleManager.refreshFocusOnTarget();

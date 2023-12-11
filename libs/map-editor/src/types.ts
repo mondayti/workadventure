@@ -53,6 +53,7 @@ export const JitsiRoomPropertyData = PropertyBase.extend({
     trigger: z.union([z.literal("onaction"), z.literal("onicon")]).optional(),
     triggerMessage: z.string().optional(),
     noPrefix: z.boolean().optional(),
+    width: z.number().min(1).max(100).default(50).optional(),
     jitsiRoomConfig: JitsiRoomConfigData,
 });
 
@@ -70,7 +71,7 @@ export const OpenWebsitePropertyData = PropertyBase.extend({
     allowAPI: z.boolean().optional(),
     trigger: z.union([z.literal("onaction"), z.literal("onicon")]).optional(),
     triggerMessage: z.string().optional(),
-    width: z.number().default(50).optional(),
+    width: z.number().min(1).max(100).default(50).optional(),
     policy: z
         .string()
         .default("fullscreen; accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture")
@@ -81,6 +82,7 @@ export const OpenWebsitePropertyData = PropertyBase.extend({
             z.literal("website"),
             z.literal("youtube"),
             z.literal("klaxoon"),
+            z.literal("googleDrive"),
             z.literal("googleDocs"),
             z.literal("googleSheets"),
             z.literal("googleSlides"),
@@ -118,7 +120,14 @@ export const AreaDataProperty = z.discriminatedUnion("type", [
 
 export const AreaDataProperties = z.array(AreaDataProperty);
 
-export const AreaData = z.object({
+export const AreaCoordinates = z.object({
+    x: z.number(),
+    y: z.number(),
+    width: z.number(),
+    height: z.number(),
+});
+
+export const AreaData = AreaCoordinates.extend({
     id: z.string(),
     x: z.number(),
     y: z.number(),
@@ -253,11 +262,13 @@ export type OpenWebsiteTypePropertiesKeys =
     | "website"
     | "youtube"
     | "klaxoon"
+    | "googleDrive"
     | "googleDocs"
     | "googleSheets"
     | "googleSlides"
     | "googleForms"
     | "eraser";
+export type AreaCoordinates = z.infer<typeof AreaCoordinates>;
 export type AreaData = z.infer<typeof AreaData>;
 export type AreaDataProperties = z.infer<typeof AreaDataProperties>;
 export type AreaDataProperty = z.infer<typeof AreaDataProperty>;

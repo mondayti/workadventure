@@ -124,8 +124,8 @@ if (player !== undefined) {
 Getting a list of remote players is fine but most of the time, you will want to dynamically track players around you.
 
 ```typescript
-WA.players.onPlayerEnters(): Observable<RemotePlayerInterface>;
-WA.players.onPlayerLeaves(): Observable<RemotePlayerInterface>;
+WA.players.onPlayerEnters: Observable<RemotePlayerInterface>;
+WA.players.onPlayerLeaves: Observable<RemotePlayerInterface>;
 ```
 
 :::caution
@@ -143,10 +143,10 @@ an object on which you can add subscriptions using the `subscribe` method.
 
 ```typescript
 await WA.players.configureTracking();
-WA.players.onPlayerEnters().subscribe((player: RemotePlayerInterface) => {
+WA.players.onPlayerEnters.subscribe((player: RemotePlayerInterface) => {
     console.log(`Player ${player.name} entered your nearby zone`);
 });
-WA.players.onPlayerLeaves().subscribe((player: RemotePlayerInterface) => {
+WA.players.onPlayerLeaves.subscribe((player: RemotePlayerInterface) => {
     console.log(`Player ${player.name} left your nearby zone`);
 });
 ```
@@ -154,7 +154,7 @@ WA.players.onPlayerLeaves().subscribe((player: RemotePlayerInterface) => {
 If you want to stop tracking rxJs subscriptions, the `subscribe()` function returns a `Subscription` object with an `unsubscribe()` method.
 
 ```javascript
-const subscription = WA.players.onPlayerEnters().subscribe((player: RemotePlayerInterface) => {
+const subscription = WA.players.onPlayerEnters.subscribe((player: RemotePlayerInterface) => {
     console.log(`Player ${player.name} entered your nearby zone`);
 });
 
@@ -199,7 +199,7 @@ at most 5 times per second (about once every 200ms).
 
 ## Remote players variables
 
-Each remote player can have [a set of variables attached](variables.md#player-variables).
+Each remote player can have [a set of variables attached](../variables#player-variables).
 Those variables can [only be set by the remote player itself, using the `WA.player` object from the scripting API.](api-player.md#player-specific-variables).
 
 Only **public** player variables can be read by other players.
@@ -260,4 +260,19 @@ of the variable.
 WA.players.onVariableChange("score").subscribe((event: PlayerVariableChanged) => {
     console.log(`Player ${event.player.name} new score is ${event.value}`);
 });
+```
+
+## Sending an event to a remote player
+
+You can send an event to a remote player using the `WA.player.sendEvent` method.
+
+```typescript
+RemotePlayer.sendEvent(key: string, value: unknown): Promise<void>
+```
+
+Example:
+
+```typescript
+// Assuming remotePlayer is a RemotePlayerInterface instance
+remotePlayer.sendEvent("my-event", "my payload");
 ```

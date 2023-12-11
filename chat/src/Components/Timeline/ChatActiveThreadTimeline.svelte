@@ -13,11 +13,11 @@
         KlaxoonEvent,
         EraserService,
         EraserException,
+        ChatMessageTypes,
     } from "@workadventure/shared-utils";
     import {
         chatMessagesStore,
         chatInputFocusStore,
-        ChatMessageTypes,
         chatPeerConnectionInProgress,
         writingStatusMessageStore,
         _newChatMessageWritingStatusSubject,
@@ -35,6 +35,8 @@
 
     const dispatch = createEventDispatcher();
     const defaultMucRoom = mucRoomsStore.getDefaultRoom();
+
+    let writingTimer: ReturnType<typeof setTimeout> | undefined;
 
     export let settingsView = false;
 
@@ -92,12 +94,28 @@
     }
 
     function writing() {
-        if (htmlMessageText != undefined && htmlMessageText !== "" && htmlMessageText !== "<br>") {
+        if (
+            htmlMessageText != undefined &&
+            htmlMessageText !== "" &&
+            htmlMessageText !== "<br>" &&
+            htmlMessageText !== "<div><br></div><div><br></div>"
+        ) {
             _newChatMessageWritingStatusSubject.next(ChatMessageTypes.userWriting);
+            if (writingTimer) {
+                clearTimeout(writingTimer);
+            }
+            writingTimer = setTimeout(() => {
+                _newChatMessageWritingStatusSubject.next(ChatMessageTypes.userStopWriting);
+                writingTimer = undefined;
+            }, 5000);
         } else {
             _newChatMessageWritingStatusSubject.next(ChatMessageTypes.userStopWriting);
+            if (writingTimer) {
+                clearTimeout(writingTimer);
+                writingTimer = undefined;
+            }
         }
-        if (htmlMessageText === "<br>") {
+        if (htmlMessageText === "<br>" || htmlMessageText === "<div><br></div><div><br></div>") {
             htmlMessageText = "";
         }
     }
@@ -339,7 +357,11 @@
                 break;
             case "Youtube":
                 try {
-                    app.link = await YoutubeService.getYoutubeEmbedUrl(new URL(app.link));
+                    const oldLink = app.link;
+                    const newLink = await YoutubeService.getYoutubeEmbedUrl(new URL(app.link));
+                    if (app.link === oldLink) {
+                        app.link = newLink;
+                    }
                 } catch (err) {
                     if (err instanceof GoogleWorkSpaceException.YoutubeException) {
                         app.error = $LL.form.application.youtube.error();
@@ -424,6 +446,8 @@
             element.removeEventListener("click", aListner);
         });
     });
+
+    /* eslint-disable svelte/no-at-html-tags */
 </script>
 
 <!-- thread -->
@@ -487,7 +511,7 @@
         id="timeLine-messageList"
         class="tw-flex tw-flex-col tw-flex-auto tw-px-5 tw-py-24 tw-justify-end tw-h-auto tw-min-h-screen"
     >
-        {#each $chatMessagesStore as message, i}
+        {#each $chatMessagesStore as message, i (message.id)}
             {#if message.type === ChatMessageTypes.text || message.type === ChatMessageTypes.me}
                 <div
                     id={`message_${message.id}`}
@@ -560,7 +584,7 @@
                             {/if}
                             {#if message.text}
                                 <div class="wa-message-body">
-                                    {#each message.text as text}
+                                    {#each message.text as text (text)}
                                         <div
                                             class="tw-text-ellipsis tw-overflow-y-auto tw-break-words tw-whitespace-pre-line"
                                         >
@@ -580,21 +604,25 @@
 
             {#if message.targets && message.targets.length > 0}
                 {#if message.type === ChatMessageTypes.userIncoming}
-                    {#each message.targets as target}
+                    {#each message.targets as target (target.jid)}
                         <div class="event tw-text-center tw-mt-2" style="white-space: nowrap;">
                             <span
                                 class="tw-w-fit tag tw-bg-dark tw-mx-2 tw-px-3 tw-py-1 tw-border tw-border-solid tw-rounded-full tw-text-xs tw-border-lighter-purple"
                                 ><b style={target.color ? `color: ${target.color};` : ""}
-                                    >{target.name.match(/\[\d*]/)
+                                    >{target.name && target.name.match(/\[\d*]/)
                                         ? target.name.substring(0, target.name.search(/\[\d*]/))
-                                        : target.name}
+                                        : target.name
+                                        ? target.name
+                                        : "Unknown"}
                                     {#if target.name.match(/\[\d*]/)}
                                         <span class="tw-font-light tw-text-xs tw-text-gray">
                                             #{target.name
-                                                .match(/\[\d*]/)
-                                                ?.join()
-                                                ?.replace("[", "")
-                                                ?.replace("]", "")}
+                                                ? target.name
+                                                      .match(/\[\d*]/)
+                                                      ?.join()
+                                                      ?.replace("[", "")
+                                                      ?.replace("]", "")
+                                                : "Unknown"}
                                         </span>
                                     {/if}</b
                                 >{$LL.timeLine.incoming()}
@@ -609,21 +637,25 @@
                     {/each}
                 {/if}
                 {#if message.type === ChatMessageTypes.userOutcoming}
-                    {#each message.targets as target}
+                    {#each message.targets as target (target.jid)}
                         <div class="event tw-text-center tw-mt-2" style="white-space: nowrap;">
                             <span
                                 class="tw-w-fit tag tw-bg-dark tw-mx-2 tw-px-3 tw-py-1 tw-border tw-border-solid tw-rounded-full tw-text-xs tw-border-lighter-purple"
                                 ><b style={target.color ? `color: ${target.color};` : ""}
-                                    >{target.name.match(/\[\d*]/)
+                                    >{target.name && target.name.match(/\[\d*]/)
                                         ? target.name.substring(0, target.name.search(/\[\d*]/))
-                                        : target.name}
+                                        : target.name
+                                        ? target.name
+                                        : "Unknown"}
                                     {#if target.name.match(/\[\d*]/)}
                                         <span class="tw-font-light tw-text-xs tw-text-gray">
                                             #{target.name
-                                                .match(/\[\d*]/)
-                                                ?.join()
-                                                ?.replace("[", "")
-                                                ?.replace("]", "")}
+                                                ? target.name
+                                                      .match(/\[\d*]/)
+                                                      ?.join()
+                                                      ?.replace("[", "")
+                                                      ?.replace("]", "")
+                                                : "Unknown"}
                                         </span>
                                     {/if}</b
                                 >{$LL.timeLine.outcoming()}
@@ -641,8 +673,8 @@
         {/each}
 
         {#if defaultMucRoom}
-            {#each [...$writingStatusMessageStore] as userJid}
-                <UserWriting {defaultMucRoom} {userJid} />
+            {#each [...$writingStatusMessageStore] as user (user.jid)}
+                <UserWriting {defaultMucRoom} userJid={user.jid} userName={user.name} />
             {/each}
         {/if}
     </div>
@@ -662,7 +694,7 @@
         {/if}
 
         <form on:submit|preventDefault={saveMessage} class="tw-flex tw-flex-col">
-            {#each [...$applicationsSelected] as app}
+            {#each [...$applicationsSelected] as app (app.name)}
                 <div
                     class="tw-flex tw-flex-column tw-items-center tw-justify-center tw-mx-12 tw-mb-2 tw-p-3 tw-flex tw-flex-wrap tw-rounded-xl tw-text-xxs tw-bottom-12"
                     style="backdrop-filter: blur(30px);border: solid 1px rgb(27 27 41);"

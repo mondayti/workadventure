@@ -3,6 +3,7 @@ import type { OpidWokaNamePolicy } from "@workadventure/messages";
 export interface FrontConfigurationInterface {
     DEBUG_MODE: boolean;
     PUSHER_URL: string;
+    FRONT_URL: string;
     ADMIN_URL: string | undefined;
     UPLOADER_URL: string;
     ICON_URL: string;
@@ -24,7 +25,6 @@ export interface FrontConfigurationInterface {
     DISABLE_ANONYMOUS: boolean;
     ENABLE_OPENID: boolean;
     OPID_PROFILE_SCREEN_PROVIDER: string | undefined;
-    OPID_LOGOUT_REDIRECT_URL: string | undefined;
     CHAT_URL: string | undefined;
     ENABLE_CHAT_UPLOAD: boolean;
     FALLBACK_LOCALE: string | undefined;
@@ -44,6 +44,7 @@ export interface FrontConfigurationInterface {
     KLAXOON_ENABLED: boolean;
     KLAXOON_CLIENT_ID: string | undefined;
     YOUTUBE_ENABLED: boolean;
+    GOOGLE_DRIVE_ENABLED: boolean;
     GOOGLE_DOCS_ENABLED: boolean;
     GOOGLE_SHEETS_ENABLED: boolean;
     GOOGLE_SLIDES_ENABLED: boolean;
@@ -52,4 +53,6 @@ export interface FrontConfigurationInterface {
     PEER_VIDEO_RECOMMENDED_BANDWIDTH: number;
     PEER_SCREEN_SHARE_LOW_BANDWIDTH: number;
     PEER_SCREEN_SHARE_RECOMMENDED_BANDWIDTH: number;
+    GOOGLE_DRIVE_PICKER_CLIENT_ID: string | undefined;
+    GOOGLE_DRIVE_PICKER_APP_ID: string | undefined;
 }

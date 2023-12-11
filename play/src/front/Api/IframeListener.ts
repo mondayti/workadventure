@@ -1,6 +1,6 @@
 import { Subject } from "rxjs";
 import { availabilityStatusToJSON, XmppSettingsMessage } from "@workadventure/messages";
-import { KLAXOON_ACTIVITY_PICKER_EVENT } from "@workadventure/shared-utils";
+import { KLAXOON_ACTIVITY_PICKER_EVENT, ChatMessage } from "@workadventure/shared-utils";
 import { HtmlUtils } from "../WebRtc/HtmlUtils";
 import {
     additionnalButtonsMenu,
@@ -52,9 +52,9 @@ import type { HasPlayerMovedInterface } from "./Events/HasPlayerMovedInterface";
 import type { JoinProximityMeetingEvent } from "./Events/ProximityMeeting/JoinProximityMeetingEvent";
 import type { ParticipantProximityMeetingEvent } from "./Events/ProximityMeeting/ParticipantProximityMeetingEvent";
 import type { AddPlayerEvent } from "./Events/AddPlayerEvent";
-import type { ChatMessage } from "./Events/ChatEvent";
 import { ModalEvent } from "./Events/ModalEvent";
 import { AddButtonActionBarEvent } from "./Events/Ui/ButtonActionBarEvent";
+import { ReceiveEventEvent } from "./Events/ReceiveEventEvent";
 
 type AnswererCallback<T extends keyof IframeQueryMap> = (
     query: IframeQueryMap[T]["query"],
@@ -162,7 +162,7 @@ class IframeListener {
     private readonly _loadSoundStream: Subject<LoadSoundEvent> = new Subject();
     public readonly loadSoundStream = this._loadSoundStream.asObservable();
 
-    private readonly _trackCameraUpdateStream: Subject<LoadSoundEvent> = new Subject();
+    private readonly _trackCameraUpdateStream: Subject<void> = new Subject();
     public readonly trackCameraUpdateStream = this._trackCameraUpdateStream.asObservable();
 
     private readonly _setTilesStream: Subject<SetTilesEvent> = new Subject();
@@ -339,7 +339,11 @@ class IframeListener {
                     } else if (iframeEvent.type === "cameraFollowPlayer") {
                         this._cameraFollowPlayerStream.next(iframeEvent.data);
                     } else if (iframeEvent.type === "chat") {
-                        scriptUtils.sendAnonymousChat(iframeEvent.data, iframe.contentWindow ?? undefined);
+                        scriptUtils.sendChat(iframeEvent.data, iframe.contentWindow ?? undefined);
+                    } else if (iframeEvent.type === "startWriting") {
+                        scriptUtils.startWriting(iframeEvent.data, iframe.contentWindow ?? undefined);
+                    } else if (iframeEvent.type === "stopWriting") {
+                        scriptUtils.stopWriting(iframeEvent.data, iframe.contentWindow ?? undefined);
                     } else if (iframeEvent.type === "openChat") {
                         this._openChatStream.next(iframeEvent.data);
                     } else if (iframeEvent.type === "closeChat") {
@@ -525,13 +529,15 @@ class IframeListener {
      * Registers an event listener to know when iframes are closed and returns an "unsubscriber" function.
      */
     onIframeCloseEvent(source: MessageEventSource, callback: () => void): () => void {
-        const callbackSet = this.iframeCloseCallbacks.get(source);
+        let callbackSet = this.iframeCloseCallbacks.get(source);
         if (callbackSet === undefined) {
-            throw new Error("Could not find iframe in list");
+            // It is possible that the iframe is not registered yet (register happens on the "load" event of the iframe, but it could be triggered AFTER first events are received).
+            callbackSet = new Set();
+            this.iframeCloseCallbacks.set(source, callbackSet);
         }
         callbackSet.add(callback);
         return () => {
-            callbackSet.delete(callback);
+            callbackSet?.delete(callback);
         };
     }
 
@@ -627,14 +633,16 @@ class IframeListener {
 
     /**
      * @param message The message to dispatch
+     * @param senderId The id of the sender (or undefined if the message is sent by the current user)
      * @param exceptOrigin Don't dispatch the message to exceptOrigin (to avoid infinite loops)
      */
-    sendUserInputChat(message: string, exceptOrigin?: Window) {
+    sendUserInputChat(message: string, senderId: number | undefined, exceptOrigin?: Window) {
         this.postMessage(
             {
                 type: "userInputChat",
                 data: {
-                    message: message,
+                    message,
+                    senderId,
                 } as UserInputChatEvent,
             },
             exceptOrigin
@@ -826,6 +834,12 @@ class IframeListener {
         });
     }
 
+    dispatchReceivedEvent(receiveEventEvent: ReceiveEventEvent) {
+        this.postMessage({
+            type: "receiveEvent",
+            data: receiveEventEvent,
+        });
+    }
     sendActionMessageTriggered(uuid: string): void {
         this.postMessage({
             type: "messageTriggered",
@@ -908,11 +922,21 @@ class IframeListener {
 
     // << TODO delete with chat XMPP integration for the discussion circle
     sendWritingStatusToChatIframe(list: Set<PlayerInterface>) {
-        const usersTyping: Array<string> = [];
-        list.forEach((user) => usersTyping.push(user.userJid));
+        const usersTyping: Array<{
+            jid?: string;
+            name?: string;
+        }> = [];
+        list.forEach((user) =>
+            usersTyping.push({
+                jid: user.userJid === "fake" ? undefined : user.userJid,
+                name: user.name,
+            })
+        );
         this.postMessageToChat({
             type: "updateWritingStatusChatList",
-            data: usersTyping,
+            data: {
+                users: usersTyping,
+            },
         });
     }
 
@@ -1024,6 +1048,26 @@ class IframeListener {
             source ?? undefined
         );
     }
+
+    /*dispatchScriptableEventToOtherIframes(
+        key: string,
+        value: unknown,
+        myId: number,
+        source: MessageEventSource | null
+    ) {
+        // Let's dispatch the message to the other iframes
+        this.postMessage(
+            {
+                type: "receiveEvent",
+                data: {
+                    key,
+                    value,
+                    senderId: myId,
+                } as ReceiveEventEvent,
+            },
+            source ?? undefined
+        );
+    }*/
 }
 
 export const iframeListener = new IframeListener();

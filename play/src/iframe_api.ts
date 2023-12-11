@@ -12,7 +12,8 @@ import nav from "./front/Api/Iframe/nav";
 import controls from "./front/Api/Iframe/controls";
 import ui from "./front/Api/Iframe/ui";
 import sound from "./front/Api/Iframe/sound";
-import room, { setMapURL, setRoomId } from "./front/Api/Iframe/room";
+import event from "./front/Api/Iframe/event";
+import room, { setHashParameters, setMapURL, setRoomId } from "./front/Api/Iframe/room";
 import { createState } from "./front/Api/Iframe/state";
 import player, {
     setPlayerName,
@@ -21,6 +22,7 @@ import player, {
     setUserRoomToken,
     setUuid,
     setIsLogged,
+    setPlayerId,
 } from "./front/Api/Iframe/player";
 import players from "./front/Api/Iframe/players";
 import type { ButtonDescriptor } from "./front/Api/Iframe/Ui/ButtonDescriptor";
@@ -51,6 +53,13 @@ export type { EmbeddedWebsite } from "./front/Api/Iframe/Room/EmbeddedWebsite";
 export type { Area } from "./front/Api/Iframe/Area/Area";
 export type { ActionsMenuAction } from "./front/Api/Iframe/ui";
 export type { TileDescriptor } from "./front/Api/Iframe/room";
+export type { ScriptingEvent } from "./front/Api/Iframe/AbstractEvent";
+export type { RemotePlayerInterface } from "./front/Api/Iframe/Players/RemotePlayer";
+export type {
+    SendChatMessageOptions,
+    SendLocalChatMessageOptions,
+    SendBubbleChatMessageOptions,
+} from "../../libs/shared-utils/src/Events/ChatEvent";
 
 const globalState = createState();
 
@@ -70,9 +79,11 @@ const initPromise = queryWorkadventure({
     type: "getState",
     data: undefined,
 }).then((gameState) => {
+    setPlayerId(gameState.playerId);
     setPlayerName(gameState.nickname);
     setPlayerLanguage(gameState.language);
     setRoomId(gameState.roomId);
+    setHashParameters(gameState.hashParameters);
     setMapURL(gameState.mapUrl);
     setTags(gameState.tags);
     setUuid(gameState.uuid);
@@ -95,6 +106,7 @@ const wa = {
     players,
     camera,
     state: globalState,
+    event,
 
     /**
      * When your script / iFrame loads WorkAdventure, it takes a few milliseconds for your

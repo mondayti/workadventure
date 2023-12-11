@@ -44,6 +44,7 @@ const mapEditor: DeepPartial<Translation["mapEditor"]> = {
             triggerOnAction: "Afficher un message d'information avec le message",
             closable: "Peut être fermé",
             noPrefix: "Partager avec d'autres salles",
+            width: "Largeur",
             jitsiRoomConfig: {
                 addConfig: "Ajouter une option",
                 startWithAudioMuted: "Démarrer avec le microphone désactivé",
@@ -83,9 +84,11 @@ const mapEditor: DeepPartial<Translation["mapEditor"]> = {
             warningEmbeddableLink: "Ce lien ne peut pas être intégré.",
             errorInvalidUrl: 'Veuillez entrer une URL valide (commençant par "https://")',
             findOutMoreHere: "En savoir plus ici",
+            openPickerSelector: "Ouvrir le sélecteur",
         },
         advancedOptions: "Options avancées",
         speakerMegaphoneProperties: {
+            id: "Identifiant de la zone de haut-parleur utilisé pour créer une salle unique",
             label: "Zone de diffusion pour haut-parleur",
             description: "",
             nameLabel: "Nom de la zone de diffusion",
@@ -109,6 +112,48 @@ const mapEditor: DeepPartial<Translation["mapEditor"]> = {
             description: "Où les joueurs apparaissent lorsqu'ils quittent la carte.",
             exitMap: "Quitter la carte",
             exitMapStartAreaName: "Nom de la zone de départ",
+        },
+        youtubeProperties: {
+            label: "Ouvrir Youtube",
+            description: "Ouvrir Youtube dans l'application ou dans un nouvel onglet.",
+            error: "Veuillez entrer une URL Youtube valide",
+            disabled: "L'intégration Youtube est désactivée.",
+        },
+        googleDocsProperties: {
+            label: "Ouvrir Google Docs",
+            description: "Ouvrir Google Docs dans l'application ou dans un nouvel onglet.",
+            error: "Veuillez entrer une URL Google Docs valide",
+            disabled: "L'intégration Google Docs est désactivée.",
+        },
+        klaxoonProperties: {
+            label: "Ouvrir Klaxoon",
+            description: "Ouvrir Klaxoon dans l'application ou dans un nouvel onglet.",
+            error: "Veuillez entrer une URL Klaxoon valide",
+            disabled: "L'intégration Klaxoon est désactivée.",
+        },
+        googleSheetsProperties: {
+            label: "Ouvrir Google Sheets",
+            description: "Ouvrir Google Sheets dans l'application ou dans un nouvel onglet.",
+            error: "Veuillez entrer une URL Google Sheets valide",
+            disabled: "L'intégration Google Sheets est désactivée.",
+        },
+        googleSlidesProperties: {
+            label: "Ouvrir Google Slides",
+            description: "Ouvrir Google Slides dans l'application ou dans un nouvel onglet.",
+            error: "Veuillez entrer une URL Google Slides valide",
+            disabled: "L'intégration Google Slides est désactivée.",
+        },
+        eraserProperties: {
+            label: "Ouvrir Eraser",
+            description: "Ouvrir Eraser dans l'application ou dans un nouvel onglet.",
+            error: "Veuillez entrer une URL Eraser valide",
+            disabled: "L'intégration Eraser est désactivée.",
+        },
+        googleDriveProperties: {
+            label: "Ouvrir Google Drive",
+            description: "Ouvrir un lien Google Drive dans l'application ou dans un nouvel onglet.",
+            error: "Veuillez entrer une URL Google Drive valide",
+            disabled: "L'intégration Google Drive est désactivée.",
         },
     },
     areaEditor: {

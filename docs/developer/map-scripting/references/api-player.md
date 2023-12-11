@@ -238,6 +238,20 @@ A player variable can have 2 scopes:
 - **World** scope: the player variable is set for a given world. It is shared with all the rooms
   of this world.
 
+:::info About the notion of "world":
+
+If you are using the SAAS version (online version) of WorkAdventure, you can create your worlds from the admin dashboard
+and put your rooms in those worlds.
+
+If you are using the self-hosted version of WorkAdventure (with no custom admin API configured), there is only one world, 
+and it is shared by all the rooms defined in the map-storage (i.e. by all URLs starting with `/~/`).
+
+In both cases, any URL starting with `/_/` is **not part** of any world. Trying to set a player variable with a scope
+"world" for URLs starting with `/_/` will be the same as setting the scope to "room".
+:::
+
+
+
 
 :::info
 Player variables can be stored in 2 different places. If the player is logged, the player variables are stored on
@@ -460,3 +474,24 @@ WA.player.proximityMeeting.onParticipantLeave().subscribe(async (player: RemoteP
     WA.chat.sendChatMessage("A participant left the proximity chat", "System");
 });
 ```
+
+## Playing a sound to players in the same meeting
+
+:::warning
+This feature is experimental. The signature of the function might change in the future.
+:::
+
+```ts
+WA.player.proximityMeeting.playSound(url: string): Promise<void>
+```
+
+The `playSound` function plays a sound to all the players in the same bubble.
+The sound will appear to come from the microphone of the player who called the function.
+
+Example:
+
+```ts
+await WA.player.proximityMeeting.playSound("https://example.com/my_sound.mp3");
+```
+
+The method returns a promise that resolves when the sound has been played.

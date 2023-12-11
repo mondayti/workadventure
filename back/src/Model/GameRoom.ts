@@ -18,7 +18,6 @@ import { ITiledMap, ITiledMapProperty, Json } from "@workadventure/tiled-map-typ
 import { Jitsi } from "@workadventure/shared-utils";
 import { mapFetcher } from "@workadventure/map-editor/src/MapFetcher";
 import { LocalUrlError } from "@workadventure/map-editor/src/LocalUrlError";
-import { Value } from "@workadventure/messages/src/ts-proto-generated/google/protobuf/struct";
 import * as Sentry from "@sentry/node";
 import { GameMapProperties, WAMFileFormat } from "@workadventure/map-editor";
 import { PositionInterface } from "../Model/PositionInterface";
@@ -32,7 +31,7 @@ import {
 } from "../Model/Zone";
 import { Movable } from "../Model/Movable";
 import { ProtobufUtils } from "../Model/Websocket/ProtobufUtils";
-import { RoomSocket, VariableSocket, ZoneSocket } from "../RoomManager";
+import { EventSocket, RoomSocket, VariableSocket, ZoneSocket } from "../RoomManager";
 import { Admin } from "../Model/Admin";
 import { adminApi } from "../Services/AdminApi";
 import { VariablesManager } from "../Services/VariablesManager";
@@ -79,7 +78,9 @@ export class GameRoom implements BrothersFinder {
     private nextUserId = 1;
 
     private roomListeners: Set<RoomSocket> = new Set<RoomSocket>();
-    private variableListeners: Set<VariableSocket> = new Set<VariableSocket>();
+    private variableListeners: Map<string, Set<VariableSocket>> = new Map<string, Set<VariableSocket>>();
+    // The key is the event name
+    private eventListeners: Map<string, Set<EventSocket>> = new Map<string, Set<EventSocket>>();
 
     private constructor(
         public readonly _roomUrl: string,
@@ -315,7 +316,13 @@ export class GameRoom implements BrothersFinder {
     }
 
     public isEmpty(): boolean {
-        return this.users.size === 0 && this.admins.size === 0 && this.roomListeners.size === 0;
+        return (
+            this.users.size === 0 &&
+            this.admins.size === 0 &&
+            this.roomListeners.size === 0 &&
+            this.variableListeners.size === 0 &&
+            this.eventListeners.size === 0
+        );
     }
 
     public updatePosition(user: User, userPosition: PointInterface): void {
@@ -586,17 +593,14 @@ export class GameRoom implements BrothersFinder {
             });
 
             // Dispatch the variable update to variable listeners
-            for (const listener of this.variableListeners.values()) {
-                if (listener.request.name !== name) {
-                    return;
-                }
-
-                listener.write(Value.wrap(JSON.parse(value)));
+            const listeners = this.variableListeners.get(name);
+            for (const listener of listeners ?? []) {
+                listener.write(JSON.parse(value));
             }
         } catch (e) {
             if (e instanceof VariableError) {
                 // Ok, we have an error setting a variable. Either the user is trying to hack the map... or the map
-                // is not up to date. So let's try to reload the map from scratch.
+                // is not up-to-date. So let's try to reload the map from scratch.
                 if (this.variableManagerLastLoad === undefined) {
                     throw e;
                 }
@@ -684,11 +688,40 @@ export class GameRoom implements BrothersFinder {
     }
 
     public addVariableListener(socket: VariableSocket) {
-        this.variableListeners.add(socket);
+        let listenersSet = this.variableListeners.get(socket.request.name);
+        if (!listenersSet) {
+            listenersSet = new Set<VariableSocket>();
+            this.variableListeners.set(socket.request.name, listenersSet);
+        }
+        listenersSet.add(socket);
     }
 
     public removeVariableListener(socket: VariableSocket) {
-        this.variableListeners.delete(socket);
+        let listenersSet = this.variableListeners.get(socket.request.name);
+        if (!listenersSet) {
+            listenersSet = new Set<VariableSocket>();
+            this.variableListeners.set(socket.request.name, listenersSet);
+        }
+        listenersSet.add(socket);
+    }
+
+    public addEventListener(socket: EventSocket) {
+        let listenersSet = this.eventListeners.get(socket.request.name);
+        if (!listenersSet) {
+            listenersSet = new Set<EventSocket>();
+            this.eventListeners.set(socket.request.name, listenersSet);
+        }
+        listenersSet.add(socket);
+    }
+
+    public removeEventListener(socket: EventSocket) {
+        const listenersSet = this.eventListeners.get(socket.request.name);
+        if (listenersSet) {
+            listenersSet.delete(socket);
+            if (listenersSet.size === 0) {
+                this.eventListeners.delete(socket.request.name);
+            }
+        }
     }
 
     /**
@@ -740,12 +773,12 @@ export class GameRoom implements BrothersFinder {
         }
 
         console.error(result.error.issues);
-        console.error("Unexpected room redirect received while querying map details", result);
+        console.error("Unexpected room redirect or error received while querying map details", result);
         Sentry.captureException(result.error.issues);
         Sentry.captureException(
-            `Unexpected room redirect received while querying map details ${JSON.stringify(result)}`
+            `Unexpected room redirect or error received while querying map details ${JSON.stringify(result)}`
         );
-        throw new Error("Unexpected room redirect received while querying map details");
+        throw new Error("Unexpected room redirect received or error while querying map details");
     }
 
     private mapPromise: Promise<ITiledMap> | undefined;
@@ -1153,6 +1186,47 @@ export class GameRoom implements BrothersFinder {
                 });
             }
         );
+    }
+
+    public dispatchEvent(name: string, data: unknown, senderId: number | "RoomApi", targetUserIds: number[]): void {
+        if (targetUserIds.length === 0) {
+            // Dispatch to all users
+            this.sendSubMessageToRoom({
+                message: {
+                    $case: "receivedEventMessage",
+                    receivedEventMessage: {
+                        name,
+                        data,
+                        senderId: senderId === "RoomApi" ? undefined : senderId,
+                    },
+                },
+            });
+
+            // Dispatch to RoomApi listeners
+            const listeners = this.eventListeners.get(name);
+            for (const eventListener of listeners ?? []) {
+                eventListener.write({
+                    senderId: senderId === "RoomApi" ? undefined : senderId,
+                    data,
+                });
+            }
+        } else {
+            for (const targetUserId of targetUserIds) {
+                const targetUser = this.getUserById(targetUserId);
+                if (targetUser) {
+                    targetUser.emitInBatch({
+                        message: {
+                            $case: "receivedEventMessage",
+                            receivedEventMessage: {
+                                name,
+                                data,
+                                senderId: senderId === "RoomApi" ? undefined : senderId,
+                            },
+                        },
+                    });
+                }
+            }
+        }
     }
 
     get mapUrl(): string {

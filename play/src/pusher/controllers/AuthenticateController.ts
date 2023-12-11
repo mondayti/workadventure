@@ -1,21 +1,18 @@
 import { v4 } from "uuid";
-import { ErrorApiData, RegisterData } from "@workadventure/messages";
-import { isAxiosError } from "axios";
+import { RegisterData, MeResponse, MeRequest } from "@workadventure/messages";
 import { z } from "zod";
 import * as Sentry from "@sentry/node";
 import { JsonWebTokenError } from "jsonwebtoken";
 import { AuthTokenData, jwtTokenManager } from "../services/JWTTokenManager";
 import { openIDClient } from "../services/OpenIDClient";
-import { DISABLE_ANONYMOUS } from "../enums/EnvironmentVariable";
+import { DISABLE_ANONYMOUS, FRONT_URL } from "../enums/EnvironmentVariable";
 import { adminService } from "../services/AdminService";
 import { validateQuery } from "../services/QueryValidator";
 import { VerifyDomainService } from "../services/verifyDomain/VerifyDomainService";
-import { adminApi } from "../services/AdminApi";
 import { BaseHttpController } from "./BaseHttpController";
 
 export class AuthenticateController extends BaseHttpController {
     routes(): void {
-        this.roomAccess();
         this.openIDLogin();
         this.me();
         this.openIDCallback();
@@ -23,35 +20,7 @@ export class AuthenticateController extends BaseHttpController {
         this.register();
         this.anonymLogin();
         this.profileCallback();
-    }
-
-    private roomAccess(): void {
-        this.app.get("/room/access", async (req, res) => {
-            try {
-                const query = validateQuery(
-                    req,
-                    res,
-                    z.object({
-                        uuid: z.string(),
-                        playUri: z.string(),
-                        token: z.string().optional(),
-                    })
-                );
-                if (query === undefined) {
-                    return;
-                }
-
-                const { uuid, playUri, token } = query;
-
-                res.json(await adminService.fetchMemberDataByUuid(uuid, token, playUri, req.ip, []));
-                return;
-            } catch (e) {
-                console.warn(e);
-            }
-            res.status(500);
-            res.send("User cannot be identified.");
-            return;
-        });
+        this.logoutUser();
     }
 
     private openIDLogin(): void {
@@ -101,21 +70,25 @@ export class AuthenticateController extends BaseHttpController {
             }
 
             // Let's validate the playUri (we don't want a hacker to forge a URL that will redirect to a malicious URL)
-            const verifyDomainService_ = VerifyDomainService.get(adminApi.getCapabilities());
+            const verifyDomainService_ = VerifyDomainService.get(await adminService.getCapabilities());
             const verifyDomainResult = await verifyDomainService_.verifyDomain(query.playUri);
             if (!verifyDomainResult) {
-                res.status(403);
-                res.send("Unauthorized domain in playUri");
+                res.atomic(() => {
+                    res.status(403);
+                    res.send("Unauthorized domain in playUri");
+                });
                 return;
             }
 
             const loginUri = await openIDClient.authorizationUrl(res, query.redirect, query.playUri, req);
-            res.cookie("playUri", query.playUri, undefined, {
-                httpOnly: true, // dont let browser javascript access cookie ever
-                secure: req.secure, // only use cookie over https
-            });
+            res.atomic(() => {
+                res.cookie("playUri", query.playUri, undefined, {
+                    httpOnly: true, // dont let browser javascript access cookie ever
+                    secure: req.secure, // only use cookie over https
+                });
 
-            res.redirect(loginUri);
+                res.redirect(loginUri);
+            });
             return;
         });
     }
@@ -149,69 +122,24 @@ export class AuthenticateController extends BaseHttpController {
          *        type: "string"
          *     responses:
          *       200:
-         *         description: NOTE - THERE ARE ADDITIONAL PROPERTIES NOT DISPLAYED HERE. THEY COME FROM THE CALL TO openIDClient.checkTokenAuth
-         *         content:
-         *           application/json:
-         *             schema:
-         *               type: object
-         *               properties:
-         *                 authToken:
-         *                   type: string
-         *                   description: A new JWT token (if no token was passed in parameter), or returns the token that was passed in parameter if one was supplied
-         *                 username:
-         *                   type: string|undefined
-         *                   description: Contains the username stored in the JWT token passed in parameter. If no token was passed, contains the data from OpenID.
-         *                   example: John Doe
-         *                 locale:
-         *                   type: string|undefined
-         *                   description: Contains the locale stored in the JWT token passed in parameter. If no token was passed, contains the data from OpenID.
-         *                   example: fr_FR
-         *                 email:
-         *                   type: string
-         *                   description: TODO
-         *                   example: TODO
-         *                 userUuid:
-         *                   type: string
-         *                   description: TODO
-         *                   example: TODO
-         *                 visitCardUrl:
-         *                   type: string|null
-         *                   description: TODO
-         *                   example: TODO
-         *                 tags:
-         *                   type: array
-         *                   description: The list of tags of the user
-         *                   items:
-         *                     type: string
-         *                     example: speaker
-         *                 textures:
-         *                   type: array
-         *                   description: The list of textures of the user
-         *                   items:
-         *                     type: TODO
-         *                     example: TODO
-         *                 messages:
-         *                   type: array
-         *                   description: The list of messages to be displayed to the user
-         *                   items:
-         *                     type: TODO
-         *                     example: TODO
+         *         description: Response to the /me endpoint
+         *         schema:
+         *           $ref: '#/definitions/MeResponse'
+         *       401:
+         *         description: Thrown when the token is invalid
          */
         //eslint-disable-next-line @typescript-eslint/no-misused-promises
         this.app.get("/me", async (req, res) => {
             const IPAddress = req.header("x-forwarded-for");
-            const query = validateQuery(
-                req,
-                res,
-                z.object({
-                    token: z.string(),
-                    playUri: z.string(),
-                })
-            );
+            const query = validateQuery(req, res, MeRequest);
             if (query === undefined) {
                 return;
             }
-            const { token, playUri } = query;
+            const { token, playUri, localStorageCompanionTextureId } = query;
+            let localStorageCharacterTextureIds = query["localStorageCharacterTextureIds[]"];
+            if (typeof localStorageCharacterTextureIds === "string") {
+                localStorageCharacterTextureIds = [localStorageCharacterTextureIds];
+            }
             try {
                 const authTokenData: AuthTokenData = jwtTokenManager.verifyJWTToken(token, false);
 
@@ -222,30 +150,44 @@ export class AuthenticateController extends BaseHttpController {
                     authTokenData.accessToken,
                     playUri,
                     IPAddress,
-                    [],
+                    localStorageCharacterTextureIds ?? [],
+                    localStorageCompanionTextureId,
                     req.header("accept-language")
                 );
+
+                if (resUserData.status === "error") {
+                    res.atomic(() => {
+                        res.json(resUserData);
+                    });
+                    return;
+                }
 
                 if (authTokenData.accessToken == undefined) {
                     //if not nonce and code, anonymous user connected
                     //get data with identifier and return token
-                    res.json({
-                        authToken: token,
-                        username: authTokenData?.username,
-                        locale: authTokenData?.locale,
-                        ...resUserData,
+                    res.atomic(() => {
+                        res.json({
+                            authToken: token,
+                            username: authTokenData?.username,
+                            locale: authTokenData?.locale,
+                            // TODO: replace ... with each property
+                            ...resUserData,
+                        } satisfies MeResponse);
                     });
                     return;
                 }
 
                 try {
                     const resCheckTokenAuth = await openIDClient.checkTokenAuth(authTokenData.accessToken);
-                    res.json({
-                        username: authTokenData?.username,
-                        authToken: token,
-                        locale: authTokenData?.locale,
-                        ...resUserData,
-                        ...resCheckTokenAuth,
+                    res.atomic(() => {
+                        res.json({
+                            username: authTokenData?.username,
+                            authToken: token,
+                            locale: authTokenData?.locale,
+                            // TODO: replace ... with each property
+                            ...resUserData,
+                            ...resCheckTokenAuth,
+                        } satisfies MeResponse);
                     });
                 } catch (err) {
                     console.warn("Error while checking token auth", err);
@@ -254,66 +196,26 @@ export class AuthenticateController extends BaseHttpController {
                 return;
             } catch (err) {
                 if (err instanceof JsonWebTokenError) {
-                    res.status(401);
-                    res.send("Invalid token");
+                    res.atomic(() => {
+                        res.status(401);
+                        res.send("Invalid token");
+                    });
                     return;
                 }
 
-                if (isAxiosError(err)) {
+                /*if (isAxiosError(err)) {
                     const errorType = ErrorApiData.safeParse(err?.response?.data);
                     if (errorType.success) {
-                        res.sendStatus(err?.response?.status ?? 500);
-                        res.json(errorType.data);
+                        const status = err?.response?.status ?? 500;
+                        res.atomic(() => {
+                            res.sendStatus(status);
+                            res.json(errorType.data);
+                        });
                         return;
                     }
-                }
+                }*/
                 throw err;
             }
-        });
-    }
-
-    private logoutCallback(): void {
-        /**
-         * @openapi
-         * /logout-callback:
-         *   get:
-         *     description: TODO
-         *     parameters:
-         *      - name: "token"
-         *        in: "query"
-         *        description: "todo"
-         *        required: false
-         *        type: "string"
-         *     responses:
-         *       200:
-         *         description: TODO
-         *
-         */
-        this.app.get("/logout-callback", async (req, res) => {
-            const query = validateQuery(
-                req,
-                res,
-                z.object({
-                    token: z.string(),
-                })
-            );
-            if (query === undefined) {
-                return;
-            }
-
-            try {
-                const authTokenData: AuthTokenData = jwtTokenManager.verifyJWTToken(query.token, false);
-                if (authTokenData.accessToken == undefined) {
-                    throw Error("Cannot log out, no access token found.");
-                }
-                await openIDClient.logoutUser(authTokenData.accessToken);
-            } catch (error) {
-                Sentry.captureException(`openIDCallback => logout-callback: ${error}`);
-                console.error("openIDCallback => logout-callback", error);
-            }
-
-            res.status(200).send("");
-            return;
         });
     }
 
@@ -352,8 +254,10 @@ export class AuthenticateController extends BaseHttpController {
                 //if no access on openid provider, return error
                 Sentry.captureException("An error occurred while connecting to OpenID Provider => " + err);
                 console.error("An error occurred while connecting to OpenID Provider => ", err);
-                res.status(500);
-                res.send("An error occurred while connecting to OpenID Provider");
+                res.atomic(() => {
+                    res.status(500);
+                    res.send("An error occurred while connecting to OpenID Provider");
+                });
                 return;
             }
             const email = userInfo.email || userInfo.sub;
@@ -367,9 +271,11 @@ export class AuthenticateController extends BaseHttpController {
                 userInfo?.locale
             );
 
-            res.clearCookie("playUri");
-            // FIXME: possibly redirect to Admin instead.
-            res.redirect(playUri + "?token=" + encodeURIComponent(authToken));
+            res.atomic(() => {
+                res.clearCookie("playUri");
+                // FIXME: possibly redirect to Admin instead.
+                res.redirect(playUri + "?token=" + encodeURIComponent(authToken));
+            });
             return;
         });
     }
@@ -422,7 +328,9 @@ export class AuthenticateController extends BaseHttpController {
      */
     private register(): void {
         this.app.options("/register", (req, res) => {
-            res.status(200).send("");
+            res.atomic(() => {
+                res.status(200).send("");
+            });
         });
 
         this.app.post("/register", async (req, res) => {
@@ -445,14 +353,16 @@ export class AuthenticateController extends BaseHttpController {
 
             const authToken = jwtTokenManager.createAuthToken(email || userUuid);
 
-            res.json({
-                authToken,
-                userUuid,
-                email,
-                roomUrl,
-                mapUrlStart,
-                organizationMemberToken,
-            } satisfies RegisterData);
+            res.atomic(() => {
+                res.json({
+                    authToken,
+                    userUuid,
+                    email,
+                    roomUrl,
+                    mapUrlStart,
+                    organizationMemberToken,
+                } satisfies RegisterData);
+            });
         });
     }
 
@@ -481,14 +391,18 @@ export class AuthenticateController extends BaseHttpController {
     private anonymLogin(): void {
         this.app.post("/anonymLogin", (req, res) => {
             if (DISABLE_ANONYMOUS) {
-                res.status(403);
+                res.atomic(() => {
+                    res.status(403);
+                });
                 return;
             } else {
                 const userUuid = v4();
                 const authToken = jwtTokenManager.createAuthToken(userUuid);
-                res.json({
-                    authToken,
-                    userUuid,
+                res.atomic(() => {
+                    res.json({
+                        authToken,
+                        userUuid,
+                    });
                 });
                 return;
             }
@@ -530,11 +444,112 @@ export class AuthenticateController extends BaseHttpController {
             }
             await openIDClient.checkTokenAuth(authTokenData.accessToken);
 
+            const accessToken = authTokenData.accessToken;
             //get login profile
-            res.status(302);
-            res.setHeader("Location", adminService.getProfileUrl(authTokenData.accessToken, playUri));
-            res.send("");
+            res.atomic(() => {
+                res.status(302);
+                res.setHeader("Location", adminService.getProfileUrl(accessToken, playUri));
+                res.send("");
+            });
             return;
+        });
+    }
+
+    private logoutCallback(): void {
+        /**
+         * @openapi
+         * /logout-callback:
+         *   get:
+         *     description: TODO
+         *     parameters:
+         *      - name: "token"
+         *        in: "query"
+         *        description: "todo"
+         *        required: false
+         *        type: "string"
+         *     responses:
+         *       200:
+         *         description: TODO
+         *
+         */
+        this.app.get("/logout-callback", (req, res) => {
+            // if no playUri, redirect to front
+            if (!req.cookies.playUri) {
+                res.atomic(() => {
+                    res.redirect(FRONT_URL);
+                });
+                return;
+            }
+
+            // when user logout, redirect to playUri saved in cookie
+            const logOutAdminUrl = new URL(req.cookies.playUri);
+            res.atomic(() => {
+                res.clearCookie("playUri");
+                res.redirect(logOutAdminUrl.toString());
+            });
+            return;
+        });
+    }
+
+    private logoutUser(): void {
+        /**
+         * @openapi
+         * /logout:
+         *   get:
+         *     description: TODO
+         *     responses:
+         *       302:
+         *         description: Redirects the user to the OpenID logout screen
+         */
+        this.app.get("/logout", async (req, res) => {
+            const query = validateQuery(
+                req,
+                res,
+                z.object({
+                    playUri: z.string(),
+                    token: z.string(),
+                    redirect: z.string().optional(),
+                })
+            );
+            if (query === undefined) {
+                return;
+            }
+
+            const verifyDomainService_ = VerifyDomainService.get(await adminService.getCapabilities());
+            const verifyDomainResult = await verifyDomainService_.verifyDomain(query.playUri);
+            if (!verifyDomainResult) {
+                res.atomic(() => {
+                    res.status(403);
+                    res.send("Unauthorized domain in playUri");
+                });
+                return;
+            }
+
+            const authTokenData: AuthTokenData = jwtTokenManager.verifyJWTToken(query.token, false);
+            if (authTokenData.accessToken == undefined) {
+                throw Error("Cannot log out, no access token found.");
+            }
+            // TODO: change that to use end session endpoint
+            // Use post logout redirect and id token hint to redirect on the logut session endpoint of the OpenId provider
+            // https://openid.net/specs/openid-connect-session-1_0.html#RPLogout
+            await openIDClient.logoutUser(authTokenData.accessToken);
+
+            res.atomic(() => {
+                // if no redirect, redirect to playUri and connect user to the world
+                // if the world is with authentication mandatory, the user will be redirected to the login screen
+                // if the world is anonymous or with authentication optional, the user will be connected to the world
+                if (!query.redirect) {
+                    res.redirect(query.playUri);
+                    return;
+                }
+
+                // save the playUri in cookie to redirect to the world after logout
+                res.cookie("playUri", query.playUri, undefined, {
+                    httpOnly: true, // dont let browser javascript access cookie ever
+                    secure: req.secure, // only use cookie over https
+                });
+                res.redirect(query.redirect);
+            });
         });
     }
 }

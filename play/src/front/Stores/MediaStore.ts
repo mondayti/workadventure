@@ -240,7 +240,7 @@ export const videoConstraintStore = derived(
         const constraints = {
             width: { min: 640, ideal: 1280, max: 1920 },
             height: { min: 400, ideal: 720, max: 1080 },
-            frameRate: { ideal: undefined },
+            frameRate: { min: 15, ideal: 30, max: 30 },
             facingMode: "user",
             resizeMode: "crop-and-scale",
             aspectRatio: 1.777777778,
@@ -529,7 +529,15 @@ export const localStreamStore = derived<Readable<MediaStreamConstraints>, LocalS
                         return stream;
                     })
                     .catch((e) => {
-                        if (constraints.video !== false /* || constraints.audio !== false*/) {
+                        if (isOverConstrainedError(e) && e.constraint === "deviceId") {
+                            console.info(
+                                "Could not access the requested microphone or webcam. Falling back to default microphone and webcam",
+                                constraints,
+                                e
+                            );
+                            requestedCameraDeviceIdStore.set(undefined);
+                            requestedMicrophoneDeviceIdStore.set(undefined);
+                        } else if (constraints.video !== false /* || constraints.audio !== false*/) {
                             console.info(
                                 "Error. Unable to get microphone and/or camera access. Trying audio only.",
                                 constraints,
@@ -630,6 +638,17 @@ export const localStreamStore = derived<Readable<MediaStreamConstraints>, LocalS
         };
     }
 );
+
+/**
+ * Firefox does not support the OverconstrainedError class.
+ * Instead, it throw an error whose name is "OverconstrainedError"
+ */
+interface OverconstrainedErrorInterface {
+    constraint: string;
+}
+function isOverConstrainedError(e: unknown): e is OverconstrainedErrorInterface {
+    return e instanceof Error && e.name === "OverconstrainedError";
+}
 
 let obtainedMediaConstraint: ObtainedMediaStreamConstraints = {
     audio: true,
@@ -741,7 +760,7 @@ export const cameraListStore = derived(deviceListStore, ($deviceListStore) => {
         return undefined;
     }
 
-    return $deviceListStore.filter((device) => device.kind === "videoinput");
+    return removeDuplicateDevices($deviceListStore.filter((device) => device.kind === "videoinput"));
 });
 
 export const microphoneListStore = derived(deviceListStore, ($deviceListStore) => {
@@ -749,7 +768,7 @@ export const microphoneListStore = derived(deviceListStore, ($deviceListStore) =
         return undefined;
     }
 
-    return $deviceListStore.filter((device) => device.kind === "audioinput");
+    return removeDuplicateDevices($deviceListStore.filter((device) => device.kind === "audioinput"));
 });
 
 export const speakerListStore = derived(deviceListStore, ($deviceListStore) => {
@@ -757,17 +776,43 @@ export const speakerListStore = derived(deviceListStore, ($deviceListStore) => {
         return undefined;
     }
 
-    const audiooutput = $deviceListStore.filter((device) => device.kind === "audiooutput");
-    // if the previous speaker used isn`t defined in the list, apply default speaker
-    const value = audiooutput.find((device) => device.deviceId === get(speakerSelectedStore));
-    if (value == undefined && audiooutput.length > 0) {
-        speakerSelectedStore.set(audiooutput[0].deviceId);
+    return removeDuplicateDevices($deviceListStore.filter((device) => device.kind === "audiooutput"));
+});
+
+export const selectDefaultSpeaker = () => {
+    const devices = get(speakerListStore);
+    if (devices !== undefined && devices.length > 0) {
+        console.log("Selecting default speaker");
+        speakerSelectedStore.set(devices[0].deviceId);
     } else {
+        console.log("No output device found");
         speakerSelectedStore.set(undefined);
     }
-    return audiooutput;
+};
+
+// This is a singleton so no need to unsubscribe
+//eslint-disable-next-line svelte/no-ignored-unsubscribe
+speakerListStore.subscribe((devices) => {
+    if (devices === undefined) {
+        return;
+    }
+    // if the previous speaker used isn`t defined in the list, apply default speaker
+    const previousSpeakerId = get(speakerSelectedStore);
+    const previousAudioOutputDevice = devices.find((device) => device.deviceId === previousSpeakerId);
+    if (previousAudioOutputDevice === undefined) {
+        selectDefaultSpeaker();
+    }
 });
+
 export const speakerSelectedStore = writable<string | undefined>();
+
+function removeDuplicateDevices(devices: MediaDeviceInfo[]) {
+    const uniqueDevices = new Map<string, MediaDeviceInfo>();
+    devices.forEach((device) => {
+        uniqueDevices.set(device.deviceId, device);
+    });
+    return Array.from(uniqueDevices.values());
+}
 
 function isConstrainDOMStringParameters(param: ConstrainDOMString): param is ConstrainDOMStringParameters {
     return (
@@ -778,6 +823,8 @@ function isConstrainDOMStringParameters(param: ConstrainDOMString): param is Con
 }
 
 // TODO: detect the new webcam and automatically switch on it.
+// It is ok to not unsubscribe to this store because it is a singleton.
+// eslint-disable-next-line svelte/no-ignored-unsubscribe
 cameraListStore.subscribe((devices) => {
     // Store not initialized yet
     if (devices === undefined) {
@@ -799,6 +846,8 @@ cameraListStore.subscribe((devices) => {
     }
 });
 
+// It is ok to not unsubscribe to this store because it is a singleton.
+// eslint-disable-next-line svelte/no-ignored-unsubscribe
 microphoneListStore.subscribe((devices) => {
     // Store not initialized yet
     if (devices === undefined) {
@@ -818,11 +867,14 @@ microphoneListStore.subscribe((devices) => {
     // If we cannot find the device ID, let's remove it.
     if (isConstrainDOMStringParameters(deviceId)) {
         if (!devices.find((device) => device.deviceId === deviceId.exact)) {
+            console.log("Microphone unplugged, removing constraint on deviceId");
             requestedMicrophoneDeviceIdStore.set(undefined);
         }
     }
 });
 
+// It is ok to not unsubscribe to this store because it is a singleton.
+// eslint-disable-next-line svelte/no-ignored-unsubscribe
 localStreamStore.subscribe((streamResult) => {
     if (streamResult.type === "error") {
         if (streamResult.error.name === BrowserTooOldError.NAME || streamResult.error.name === WebviewOnOldIOS.NAME) {
@@ -833,21 +885,26 @@ localStreamStore.subscribe((streamResult) => {
 
 // When the stream is initialized, the new sound constraint is recreated and the first speaker is set.
 // If the user did not select the new speaker, the first new speaker cannot be selected automatically.
-speakerSelectedStore.subscribe((speaker) => {
+// It is ok to not unsubscribe to this store because it is a singleton.
+// eslint-disable-next-line svelte/no-ignored-unsubscribe
+/*speakerSelectedStore.subscribe((speaker) => {
     const oldValue = localUserStore.getSpeakerDeviceId();
     const currentValue = speaker;
     const speakerList = get(speakerListStore);
     const oldDevice =
-        oldValue && speakerList ? speakerList.find((mediaDeviceInfo) => mediaDeviceInfo.deviceId == oldValue) : null;
+        oldValue && speakerList
+            ? speakerList.find((mediaDeviceInfo) => mediaDeviceInfo.deviceId == oldValue)
+            : undefined;
     if (
-        oldDevice != undefined &&
-        speakerList != undefined &&
+        oldDevice !== undefined &&
+        speakerList !== undefined &&
         currentValue !== oldDevice.deviceId &&
         speakerList.find((value) => value.deviceId == oldValue)
     ) {
+        console.warn("speakerSelectedStore.subscribe", oldValue, currentValue, oldDevice.deviceId);
         speakerSelectedStore.set(oldDevice.deviceId);
     }
-});
+});*/
 
 function createVideoBandwidthStore() {
     const { subscribe, set } = writable<number | "unlimited">(localUserStore.getVideoBandwidth());

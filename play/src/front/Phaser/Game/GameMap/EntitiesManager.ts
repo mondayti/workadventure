@@ -1,6 +1,6 @@
 import { EntityData, EntityDataProperties, EntityPrefabRef, WAMEntityData } from "@workadventure/map-editor";
 import { Observable, Subject } from "rxjs";
-import { get } from "svelte/store";
+import { get, Unsubscriber } from "svelte/store";
 import { z } from "zod";
 import { actionsMenuStore } from "../../../Stores/ActionsMenuStore";
 import {
@@ -57,6 +57,7 @@ export class EntitiesManager extends Phaser.Events.EventEmitter {
     private activatableEntities: Entity[];
 
     private properties: Map<string, string | boolean | number>;
+    private actionsMenuStoreUnsubscriber: Unsubscriber;
 
     /**
      * Firing on map change, containing newest collision grid array
@@ -68,14 +69,14 @@ export class EntitiesManager extends Phaser.Events.EventEmitter {
         super();
         this.scene = scene;
         this.gameMapFrontWrapper = gameMapFrontWrapper;
-        this.shiftKey = this.scene.input.keyboard?.addKey("SHIFT");
-        this.ctrlKey = this.scene.input.keyboard?.addKey("CTRL");
+        this.shiftKey = this.scene.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
+        this.ctrlKey = this.scene.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.CTRL);
         this.entities = new Map<string, Entity>();
         this.activatableEntities = [];
         this.properties = new Map<string, string | boolean | number>();
 
         // clear properties immediately on every ActionsMenu change
-        actionsMenuStore.subscribe((data) => {
+        this.actionsMenuStoreUnsubscriber = actionsMenuStore.subscribe((data) => {
             this.clearProperties();
             this.gameMapFrontWrapper.handleEntityActionTrigger();
         });
@@ -235,15 +236,6 @@ export class EntitiesManager extends Phaser.Events.EventEmitter {
         entity.on(EntityEvent.Updated, (data: EntityData) => {
             this.emit(EntitiesManagerEvent.UpdateEntity, data);
         });
-        entity.on(Phaser.Input.Events.DRAG_START, () => {
-            if (
-                get(mapEditorModeStore) &&
-                this.isEntityEditorToolActive() &&
-                get(mapEditorEntityModeStore) === "EDIT"
-            ) {
-                mapEditorSelectedEntityDraggedStore.set(true);
-            }
-        });
         entity.on(Phaser.Input.Events.DRAG, (pointer: Phaser.Input.Pointer, dragX: number, dragY: number) => {
             if (
                 get(mapEditorModeStore) &&
@@ -307,19 +299,22 @@ export class EntitiesManager extends Phaser.Events.EventEmitter {
             if (pointer.downElement?.tagName !== "CANVAS") {
                 return;
             }
+
             if (
                 get(mapEditorModeStore) &&
                 this.isEntityEditorToolActive() &&
                 !get(mapEditorSelectedEntityPrefabStore)
             ) {
-                if (this.isTrashEditorToolActive()) {
-                    entity.delete();
-                    return;
-                }
-                mapEditorEntityModeStore.set("EDIT");
                 if (document.activeElement instanceof HTMLElement) {
                     document.activeElement.blur();
                 }
+
+                if (this.isTrashEditorToolActive()) {
+                    return;
+                }
+
+                mapEditorEntityModeStore.set("EDIT");
+                mapEditorSelectedEntityDraggedStore.set(true);
                 mapEditorSelectedEntityStore.set(entity);
             }
         });
@@ -409,5 +404,9 @@ export class EntitiesManager extends Phaser.Events.EventEmitter {
 
     public clearProperties(): void {
         this.properties.clear();
+    }
+
+    public close() {
+        this.actionsMenuStoreUnsubscriber();
     }
 }

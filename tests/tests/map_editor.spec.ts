@@ -9,11 +9,12 @@ import Map from "./utils/map";
 import ConfigureMyRoom from "./utils/map-editor/configureMyRoom";
 import {resetWamMaps} from "./utils/map-editor/uploader";
 import {evaluateScript} from "./utils/scripting";
+import {RENDERER_MODE} from "./utils/environment";
 
 
 const protocol = process.env.MAP_STORAGE_PROTOCOL ?? 'http';
 
-const url = (end) => `${protocol}://play.workadventure.localhost/~/maps/${end}.wam`;
+const url = (end) => `${protocol}://play.workadventure.localhost/~/maps/${end}.wam?phaserMode=${RENDERER_MODE}`;
 
 test.setTimeout(240_000); // Fix Webkit that can take more than 60s
 test.use({
@@ -110,7 +111,7 @@ test.describe('Map editor', () => {
     await Menu.openMapEditor(page);
     await MapEditor.openAreaEditor(page);
     await AreaEditor.drawArea(page, {x: 1*32*1.5, y: 5}, {x: 9*32*1.5, y: 4*32*1.5});
-    await AreaEditor.addProperty(page, 'SpeakerZone for megaphone');
+    await AreaEditor.addProperty(page, 'Speaker zone for megaphone');
     await AreaEditor.setSpeakerMegaphoneProperty(page, `${browser.browserType().name()}SpeakerZone`);
     await AreaEditor.drawArea(page, {x: 1*32*1.5, y: 6*32*1.5}, {x: 9*32*1.5, y: 9*32*1.5});
     await AreaEditor.addProperty(page, 'ListenerZone for megaphone');
@@ -129,7 +130,21 @@ test.describe('Map editor', () => {
     await login(page2, "test2", 5);
     await Map.teleportToPosition(page2, 4*32, 7*32);
 
+    // The user in the listener zone can see the speaker
     await expect(await page2.locator('.cameras-container .other-cameras .jitsi-video')).toBeVisible({timeout: 20_000});
+    // The speaker cannot see the listener
+    await expect(await page.locator('.cameras-container .other-cameras .jitsi-video')).toBeHidden({timeout: 20_000});
+
+    // Now, let's move player 2 to the speaker zone
+    await Map.walkToPosition(page2, 4*32, 2*32);
+    // FIXME: if we use Map.teleportToPosition, the test fails. Why?
+    //await Map.teleportToPosition(page2, 4*32, 2*32);
+
+    // The first speaker (player 1) can now see player2
+    await expect(await page.locator('.cameras-container .other-cameras .jitsi-video')).toBeVisible({timeout: 20_000});
+    // And the opposite is still true (player 2 can see player 1)
+    await expect(await page2.locator('.cameras-container .other-cameras .jitsi-video')).toBeVisible({timeout: 20_000});
+
   });
 
   test('Successfully set start area in the map editor', async ({ page, browser, request, browserName }) => {
@@ -262,6 +277,12 @@ test.describe('Map editor', () => {
     // fill Google Slides link
     await page.getByPlaceholder('https://docs.google.com/presentation/d/1fU4fOnRiDIvOoVXbksrF2Eb0L8BYavs7YSsBmR_We3g/edit').first().fill('https://docs.google.com/presentation/d/1fU4fOnRiDIvOoVXbksrF2Eb0L8BYavs7YSsBmR_We3g/edit');
 
+    // add property Google Slides
+    await AreaEditor.addProperty(page, 'Open Google Drive');
+    // fill Google Slides link
+    await page.getByPlaceholder('https://drive.google.com/file/d/1DjNjZVbVeQO9EvgONLzCtl6wG-kxSr9Z/preview').first().fill('https://drive.google.com/file/d/1DjNjZVbVeQO9EvgONLzCtl6wG-kxSr9Z/preview');
+    
+
     await Menu.closeMapEditor(page);
 
     // walk on the area position and open the popup
@@ -317,6 +338,11 @@ test.describe('Map editor', () => {
     // fill Google Slides link
     await page.getByPlaceholder('https://docs.google.com/presentation/d/1fU4fOnRiDIvOoVXbksrF2Eb0L8BYavs7YSsBmR_We3g/edit').first().fill('https://docs.google.com/presentation/d/1fU4fOnRiDIvOoVXbksrF2Eb0L8BYavs7YSsBmR_We3g/edit');
 
+    // add property Google Drive
+    await EntityEditor.addProperty(page, 'Open Google Drive');
+    // fill Google Drive link
+    await page.getByPlaceholder('https://drive.google.com/file/d/1DjNjZVbVeQO9EvgONLzCtl6wG-kxSr9Z/preview').first().fill('https://drive.google.com/file/d/1DjNjZVbVeQO9EvgONLzCtl6wG-kxSr9Z/preview');
+
     // close object selector
     await Menu.closeMapEditor(page);
 
@@ -327,6 +353,7 @@ test.describe('Map editor', () => {
     await expect(page.locator('.actions-menu .actions button').nth(0)).toContainText('Open Google Docs');
     await expect(page.locator('.actions-menu .actions button').nth(1)).toContainText('Open Google Sheets');
     await expect(page.locator('.actions-menu .actions button').nth(2)).toContainText('Open Google Slides');
+    await expect(page.locator('.actions-menu .actions button').nth(3)).toContainText('Open Google Drive');
   });
 
   test('Successfully set Klaxoon\'s application entity in the map editor', async ({ page, browser, request, browserName }) => {
@@ -373,4 +400,10 @@ test.describe('Map editor', () => {
     // check if the popup with application is opened
     await expect(page.locator('.actions-menu .actions button').nth(0)).toContainText('Open Klaxoon');
   });
+
+  // Create test for Google picker docs
+  // test('Successfully open Google picker for docs', async ({ page, browser, request, browserName }) => {});
+  // Create test for Google picker spreadsheet
+  // Create test fir Google picker presentation
+  // Create test for Google picker drive
 });

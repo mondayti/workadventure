@@ -66,6 +66,12 @@
                         "noPrefix": {
                           "type": "boolean"
                         },
+                        "width": {
+                          "type": "number",
+                          "minimum": 1,
+                          "maximum": 100,
+                          "default": 50
+                        },
                         "jitsiRoomConfig": {
                           "type": "object",
                           "properties": {
@@ -163,6 +169,8 @@
                         },
                         "width": {
                           "type": "number",
+                          "minimum": 1,
+                          "maximum": 100,
                           "default": 50
                         },
                         "policy": {
@@ -178,6 +186,7 @@
                             "website",
                             "youtube",
                             "klaxoon",
+                            "googleDrive",
                             "googleDocs",
                             "googleSheets",
                             "googleSlides",
@@ -232,9 +241,6 @@
           "items": {
             "type": "object",
             "properties": {
-              "id": {
-                "type": "string"
-              },
               "x": {
                 "type": "number"
               },
@@ -246,6 +252,9 @@
               },
               "height": {
                 "type": "number"
+              },
+              "id": {
+                "type": "string"
               },
               "visible": {
                 "type": "boolean"
@@ -439,11 +448,11 @@
               }
             },
             "required": [
-              "id",
               "x",
               "y",
               "width",
               "height",
+              "id",
               "visible",
               "name",
               "properties"

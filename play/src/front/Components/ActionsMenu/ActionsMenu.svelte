@@ -4,6 +4,7 @@
     import { actionsMenuStore } from "../../Stores/ActionsMenuStore";
 
     import type { ActionsMenuAction, ActionsMenuData } from "../../Stores/ActionsMenuStore";
+    import { analyticsClient } from "../../Administration/AnalyticsClient";
 
     let actionsMenuData: ActionsMenuData | undefined;
     let sortedActions: ActionsMenuAction[] | undefined;
@@ -59,11 +60,12 @@
                     class="actions tw-flex tw tw-flex-col tw-items-center"
                     class:margin-close={!actionsMenuData.menuName}
                 >
-                    {#each sortedActions ?? [] as action}
+                    {#each sortedActions ?? [] as action (action.actionName)}
                         <button
                             type="button"
                             class="btn light tw-justify-center tw-font-bold tw-text-xs sm:tw-text-base tw-text-center tw-h-fit tw-m-2 tw-w-full {action.style ??
                                 ''}"
+                            on:click={analyticsClient.clicPropertykMapEditor(action.actionName, action.style)}
                             on:click|preventDefault={() => {
                                 action.callback();
                             }}

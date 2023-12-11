@@ -2,6 +2,7 @@ syntax = "proto3";
 
 import "google/protobuf/wrappers.proto";
 import "google/protobuf/struct.proto";
+import "google/protobuf/any.proto";
 
 /*********** PARTIAL MESSAGES **************/
 
@@ -246,9 +247,15 @@ message ClientToServerMessage {
     MegaphoneStateMessage megaphoneStateMessage = 32;
     ScreenSharingStateMessage screenSharingStateMessage = 33;
     JitsiParticipantIdSpaceMessage  jitsiParticipantIdSpaceMessage = 34;
+    UpdateSpaceMetadataMessage updateSpaceMetadataMessage = 35;
   }
 }
 
+message ReceivedEventMessage {
+  string name = 1;
+  google.protobuf.Value data = 2;
+  optional int32 senderId = 3;
+}
 
 /************ BI-DIRECTIONAL MESSAGES **************/
 
@@ -310,6 +317,7 @@ message QueryMessage {
     RoomTagsQuery roomTagsQuery = 3;
     EmbeddableWebsiteQuery embeddableWebsiteQuery = 4;
     RoomsFromSameWorldQuery roomsFromSameWorldQuery = 5;
+    SendEventQuery sendEventQuery = 6;
   }
 }
 
@@ -335,6 +343,12 @@ message EmbeddableWebsiteQuery {
 message RoomsFromSameWorldQuery {
 }
 
+message SendEventQuery {
+  string name = 1;
+  google.protobuf.Value data = 2;
+  repeated int32 targetUserIds = 3;
+}
+
 message AnswerMessage {
   int32 id = 1;
   oneof answer {
@@ -344,6 +358,7 @@ message AnswerMessage {
     RoomTagsAnswer roomTagsAnswer = 5;
     EmbeddableWebsiteAnswer embeddableWebsiteAnswer = 6;
     RoomsFromSameWorldAnswer roomsFromSameWorldAnswer = 7;
+    SendEventAnswer sendEventAnswer = 8;
   }
 }
 
@@ -378,6 +393,9 @@ message RoomsFromSameWorldAnswer {
   repeated RoomShortDescription roomDescriptions = 1;
 }
 
+message SendEventAnswer {
+}
+
 /*********** SERVER TO CLIENT MESSAGES *************/
 
 message UserMovedMessage {
@@ -409,6 +427,8 @@ message SubMessage {
     UpdateSpaceUserMessage updateSpaceUserMessage = 17;
     RemoveSpaceUserMessage removeSpaceUserMessage = 18;
     MegaphoneSettings megaphoneSettingsMessage = 19;
+    ReceivedEventMessage receivedEventMessage = 20;
+    UpdateSpaceMetadataMessage updateSpaceMetadataMessage = 21;
   }
 }
 
@@ -770,6 +790,7 @@ message SubToPusherRoomMessage {
     EditMapCommandMessage editMapCommandMessage = 3;
     JoinMucRoomMessage joinMucRoomMessage = 4;
     LeaveMucRoomMessage leaveMucRoomMessage = 5;
+    ReceivedEventMessage receivedEventMessage = 6;
   }
 }
 
@@ -868,6 +889,10 @@ message RoomsList {
   repeated RoomDescription roomDescription = 1;
 }
 
+message DispatchGlobalEventRequest {
+  string name = 1;
+  google.protobuf.Value value = 2;
+}
 
 /********************************************************************************
  * Start Chat Messages
@@ -927,6 +952,7 @@ message PusherToBackSpaceMessage{
     UpdateSpaceUserMessage updateSpaceUserMessage = 4;
     RemoveSpaceUserMessage removeSpaceUserMessage = 5;
     PingMessage pongMessage = 6;
+    UpdateSpaceMetadataMessage updateSpaceMetadataMessage = 7;
   }
 }
 
@@ -936,6 +962,7 @@ message BackToPusherSpaceMessage{
     UpdateSpaceUserMessage updateSpaceUserMessage = 2;
     RemoveSpaceUserMessage removeSpaceUserMessage = 3;
     PingMessage pingMessage = 4;
+    UpdateSpaceMetadataMessage updateSpaceMetadataMessage = 5;
   }
 }
 
@@ -1002,6 +1029,11 @@ message RemoveSpaceUserMessage{
   int32 userId = 2;
   google.protobuf.StringValue filterName = 3;
 }
+message UpdateSpaceMetadataMessage{
+  string spaceName = 1;
+  string metadata = 2;
+  google.protobuf.StringValue filterName = 3;
+}
 
 
 
@@ -1034,18 +1066,6 @@ message SpaceFilterLiveStreaming{
 message SpaceFilterEverybody{
 }
 
-message VariableRequest {
-  string room = 1;
-  string name = 2;
-}
-
-message SaveVariableRequest {
-  string room = 1;
-  string name = 2;
-  google.protobuf.Value value = 3;
-
-}
-
 /*
 message Filter {
   enum Operator {
@@ -1063,3 +1083,37 @@ message Filter {
 /*********************************************************************************
  * End Spaces messages
  *********************************************************************************/
+
+
+/* Duplicated events from RoomAPI */
+
+message VariableRequest {
+  string room = 1;
+  string name = 2;
+}
+
+message SaveVariableRequest {
+  string room = 1;
+  string name = 2;
+  google.protobuf.Value value = 3;
+
+}
+
+message EventRequest {
+  string room = 1;
+  string name = 2;
+}
+
+message EventResponse {
+  google.protobuf.Value data = 1;
+  optional int32 senderId = 2;
+}
+
+message DispatchEventRequest {
+  string room = 1;
+  string name = 2;
+  google.protobuf.Value data = 3;
+  // If targetUserIds is empty, the event is broadcast to all users in the room. Otherwise, it targets the users with the given ids.
+  repeated int32 targetUserIds = 4;
+}
+

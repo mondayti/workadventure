@@ -9,6 +9,8 @@ import { screenSharingLocalStreamStore } from "../Stores/ScreenSharingStore";
 import { playersStore } from "../Stores/PlayersStore";
 import { peerStore, screenSharingPeerStore } from "../Stores/PeerStore";
 import { batchGetUserMediaStore } from "../Stores/MediaStore";
+import { analyticsClient } from "../Administration/AnalyticsClient";
+import { nbSoundPlayedInBubbleStore } from "../Stores/ApparentMediaContraintStore";
 import { mediaManager, NotificationType } from "./MediaManager";
 import { ScreenSharingPeer } from "./ScreenSharingPeer";
 import { VideoPeer } from "./VideoPeer";
@@ -60,14 +62,16 @@ export class SimplePeer {
 
         this.initialise();
 
-        blackListManager.onBlockStream.subscribe((userUuid) => {
-            const user = playersStore.getPlayerByUuid(userUuid);
-            if (!user) {
-                return;
-            }
+        this.rxJsUnsubscribers.push(
+            blackListManager.onBlockStream.subscribe((userUuid) => {
+                const user = playersStore.getPlayerByUuid(userUuid);
+                if (!user) {
+                    return;
+                }
 
-            this.closeConnection(user.userId);
-        });
+                this.closeConnection(user.userId);
+            })
+        );
     }
 
     /**
@@ -165,6 +169,7 @@ export class SimplePeer {
             mediaManager.createNotification(name, NotificationType.discussion);
         }
 
+        analyticsClient.addNewParticipant();
         peerStore.addPeer(user.userId, peer);
         return peer;
     }
@@ -406,5 +411,33 @@ export class SimplePeer {
             PeerConnectionScreenSharing.destroy();
             screenSharingPeerStore.removePeer(PeerConnectionScreenSharing.userId);
         }
+    }
+
+    public dispatchSound(url: URL) {
+        return new Promise<void>((resolve, reject) => {
+            (async () => {
+                // TODO: create only one?
+                const audioContext = new AudioContext();
+
+                const response = await fetch(url);
+                const arrayBuffer = await response.arrayBuffer();
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+                const destination = audioContext.createMediaStreamDestination();
+                const bufferSource = audioContext.createBufferSource();
+                bufferSource.buffer = audioBuffer;
+                bufferSource.start(0);
+                bufferSource.connect(destination);
+                bufferSource.onended = () => {
+                    nbSoundPlayedInBubbleStore.soundEnded();
+                    resolve();
+                };
+                nbSoundPlayedInBubbleStore.soundStarted();
+
+                for (const videoPeer of get(peerStore).values()) {
+                    videoPeer.addStream(destination.stream);
+                }
+            })().catch(reject);
+        });
     }
 }
